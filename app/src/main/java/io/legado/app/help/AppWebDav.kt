@@ -10,15 +10,17 @@ import io.legado.app.data.entities.BookProgress
 import io.legado.app.domain.gateway.BackupSettingsGateway
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.config.BackupConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.BackupRestoreLock
-import io.legado.app.help.storage.BookRestorePlanner
 import io.legado.app.help.storage.Restore
+import io.legado.app.help.storage.planBookRestore
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.lib.webdav.WebDavFile
+import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.FileUtils
@@ -29,6 +31,7 @@ import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFolderIfNotExist
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJson
 import io.legado.app.utils.normalizeFileName
@@ -552,23 +555,36 @@ object AppWebDav {
         remoteBookGroupFile: WebDavFile?
     ) {
         val currentLocalBooks = appDb.bookDao.all
-        val plan = BookRestorePlanner.planBookRestore(
-            incomingBooks = remoteBooks,
+        remoteBooks.forEach { book ->
+            book.upType()
+        }
+        val restorePlan = planBookRestore(
+            restoredBooks = remoteBooks,
             existingBooks = currentLocalBooks,
-            isLocationAvailable = { Restore.localBookLocationStatus(it) }
+            ignoreLocalBook = BackupConfig.ignoreLocalBook,
+            locationStatus = { Restore.localBookLocationStatus(it) }
         )
+        restorePlan.booksToUpsert
+            .filter { book -> book.isLocal }
+            .forEach { book -> book.coverUrl = LocalBook.getCoverPath(book) }
 
-        appDb.bookDao.delete(*currentLocalBooks.toTypedArray())
-        if (plan.booksToInsert.isNotEmpty()) {
-            appDb.bookDao.insert(*plan.booksToInsert.toTypedArray())
+        appDb.runInTransaction {
+            if (restorePlan.booksToDelete.isNotEmpty()) {
+                appDb.bookDao.delete(*restorePlan.booksToDelete.toTypedArray())
+            }
+            if (restorePlan.booksToUpdate.isNotEmpty()) {
+                appDb.bookDao.update(*restorePlan.booksToUpdate.toTypedArray())
+            }
+            if (restorePlan.booksToInsert.isNotEmpty()) {
+                appDb.bookDao.insert(*restorePlan.booksToInsert.toTypedArray())
+            }
         }
 
         if (remoteBookGroupFile != null) {
             val groupJson = remoteBookGroupFile.download().toString(Charsets.UTF_8)
             if (groupJson.isJson()) {
                 GSON.fromJsonArray<BookGroup>(groupJson).getOrNull()?.let { groups ->
-                    appDb.bookGroupDao.all.let { appDb.bookGroupDao.delete(*it.toTypedArray()) }
-                    appDb.bookGroupDao.insert(*groups.toTypedArray())
+                    appDb.bookGroupDao.replaceAll(groups)
                 }
             }
         }
@@ -611,10 +627,11 @@ object AppWebDav {
         val bookGroupJson = GSON.toJson(localGroups)
         WebDav(rootWebDavUrl + "bookGroup.json", authorization).upload(bookGroupJson.toByteArray())
 
+        val localLocalBooks = localBooks.filter { it.isLocal }
+        if (localLocalBooks.isNotEmpty()) {
+            upLocalBooks(localLocalBooks)
+        }
         localBooks.forEach { book ->
-            if (book.isLocal) {
-                kotlin.runCatching { uploadLocalBookFile(book) }
-            }
             uploadBookProgress(book)
         }
         LocalConfig.lastBackup = System.currentTimeMillis()
