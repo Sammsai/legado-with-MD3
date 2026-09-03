@@ -41,6 +41,7 @@ data class PlayerChapterUi(
     val title: String,
     val isVolume: Boolean,
     val tocLevel: Int,
+    val hasSubChapters: Boolean = false,
 )
 
 /**
@@ -61,7 +62,7 @@ fun PlayerTocPage(
     var lastScrollTarget by remember { mutableIntStateOf(-1) }
     LaunchedEffect(currentIndex, chapters) {
         val currentItem = chapters.indexOfFirst {
-            !it.isVolume && it.index == currentIndex
+            (!it.isVolume || !it.hasSubChapters) && it.index == currentIndex
         }
         if (currentItem >= 0) {
             val target = (currentItem - 2).coerceAtLeast(0)
@@ -99,12 +100,12 @@ fun PlayerTocPage(
             items(
                 items = chapters,
                 key = { chapter ->
-                    if (chapter.isVolume) "player-volume-${chapter.index}"
+                    if (chapter.isVolume && chapter.hasSubChapters) "player-volume-${chapter.index}"
                     else "player-chapter-${chapter.index}"
                 },
-                contentType = { chapter -> if (chapter.isVolume) "volume" else "chapter" },
+                contentType = { chapter -> if (chapter.isVolume && chapter.hasSubChapters) "volume" else "chapter" },
             ) { chapter ->
-                if (chapter.isVolume) {
+                if (chapter.isVolume && chapter.hasSubChapters) {
                     AppText(
                         text = chapter.title,
                         modifier = Modifier

@@ -62,6 +62,28 @@ class TocHierarchyTest {
         assertEquals(listOf(0, 0, 0, 1, 1, 2, 0), reversed.map { it.tocLevel })
     }
 
+    @Test
+    fun computeHasSubChapters_identifiesWhetherVolumeHasChildren() {
+        val list = listOf(
+            chapter(0, "卷一（有章节）", level = 0, isVolume = true),
+            chapter(1, "第一章", level = 1),
+            chapter(2, "第二章", level = 1),
+            chapter(3, "卷二（空卷）", level = 0, isVolume = true),
+            chapter(4, "卷三（扁平有章节）", level = 0, isVolume = true),
+            chapter(5, "第三章（扁平）", level = 0, isVolume = false),
+            chapter(6, "末尾空卷", level = 0, isVolume = true),
+        )
+
+        val hasSubChapters = list.computeHasSubChapters()
+        assertEquals(true, hasSubChapters[0])
+        assertEquals(false, hasSubChapters[1])
+        assertEquals(false, hasSubChapters[2])
+        assertEquals(false, hasSubChapters[3])
+        assertEquals(true, hasSubChapters[4])
+        assertEquals(false, hasSubChapters[5])
+        assertEquals(false, hasSubChapters[6])
+    }
+
     private fun chapters() = listOf(
         chapter(0, "序章", level = 0),
         chapter(1, "第一卷", level = 0, isVolume = true),

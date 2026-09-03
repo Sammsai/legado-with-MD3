@@ -849,10 +849,10 @@ private fun ReaderSheetChapterList(
     ) {
         items(
             items = state.action.items,
-            key = { item -> if (item.isVolume) "sheet-volume-${item.id}" else "sheet-chapter-${item.id}" },
-            contentType = { item -> if (item.isVolume) "volume" else "chapter" },
+            key = { item -> if (item.isVolume && item.hasSubChapters) "sheet-volume-${item.id}" else "sheet-chapter-${item.id}" },
+            contentType = { item -> if (item.isVolume && item.hasSubChapters) "volume" else "chapter" },
         ) { item ->
-            if (item.isVolume) {
+            if (item.isVolume && item.hasSubChapters) {
                 ReaderSheetVolumeItem(
                     item = item,
                     collapsed = item.id in state.collapsedVolumes,

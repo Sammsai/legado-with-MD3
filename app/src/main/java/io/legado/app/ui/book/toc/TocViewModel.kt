@@ -78,6 +78,7 @@ data class TocItemUi(
     val title: String,
     val tag: String?,
     val isVolume: Boolean,
+    val hasSubChapters: Boolean = false,
     val tocLevel: Int,
     val isVip: Boolean,
     val isPay: Boolean,
@@ -171,7 +172,8 @@ sealed interface TocEffect {
 data class TocDomainItem(
     val chapter: BookChapter,
     val displayTitle: String,
-    val downloadState: DownloadState
+    val downloadState: DownloadState,
+    val hasSubChapters: Boolean = false,
 )
 
 private data class DownloadContext(
@@ -477,8 +479,10 @@ class TocViewModel(
             chineseConverterType = config.chineseConverterType,
         )
 
+        val hasSubChapterArray = processedChapters.computeHasSubChapters()
+
         if (book.isLocal) {
-            return@combine processedChapters.map { chapter ->
+            return@combine processedChapters.mapIndexed { index, chapter ->
                 val baseTitle = chapter.getDisplayTitle(
                     useReplace = false,
                     chineseConverterType = config.chineseConverterType,
@@ -486,7 +490,8 @@ class TocViewModel(
                 TocDomainItem(
                     chapter = chapter,
                     displayTitle = titleState.titles[chapter.index] ?: baseTitle,
-                    downloadState = DownloadState.LOCAL
+                    downloadState = DownloadState.LOCAL,
+                    hasSubChapters = hasSubChapterArray[index],
                 )
             }
         }
@@ -495,7 +500,7 @@ class TocViewModel(
         val errorIndices = downloadCtx.downloadState?.failedIndices.orEmpty()
         val cachedFiles = downloadCtx.cachedFiles
 
-        processedChapters.map { chapter ->
+        processedChapters.mapIndexed { index, chapter ->
             val downloadState = when {
                 chapter.index in runningIndices -> DownloadState.DOWNLOADING
                 chapter.index in errorIndices -> DownloadState.ERROR
@@ -508,9 +513,10 @@ class TocViewModel(
                 chineseConverterType = config.chineseConverterType,
             )
             TocDomainItem(
-                chapter,
-                titleState.titles[chapter.index] ?: baseTitle,
-                downloadState
+                chapter = chapter,
+                displayTitle = titleState.titles[chapter.index] ?: baseTitle,
+                downloadState = downloadState,
+                hasSubChapters = hasSubChapterArray[index],
             )
         }
 
@@ -574,6 +580,7 @@ class TocViewModel(
             title = displayTitle,
             tag = chapter.tag,
             isVolume = chapter.isVolume,
+            hasSubChapters = hasSubChapters,
             tocLevel = chapter.tocLevel,
             isVip = chapter.isVip,
             isPay = chapter.isPay,

@@ -84,3 +84,30 @@ internal fun List<BookChapter>.reverseTocHierarchy(): List<BookChapter> {
 
     return buildList(size) { roots.appendReversedTo(this) }
 }
+
+/**
+ * 计算章节列表中每个章节是否是有下接子章节的卷。
+ *
+ * 1. 若 chapter.isVolume == false，则 hasSubChapters = false。
+ * 2. 若 chapter.isVolume == true：
+ *    - 当存在 tocLevel > 0 的层级目录时：若紧随其后的章节 tocLevel > 当前 chapter.tocLevel，则 hasSubChapters = true；否则为 false。
+ *    - 当所有章节 tocLevel == 0 的扁平分卷时：若紧随其后的章节 isVolume == false，则 hasSubChapters = true；否则为 false。
+ */
+fun List<BookChapter>.computeHasSubChapters(): BooleanArray {
+    val result = BooleanArray(size)
+    if (isEmpty()) return result
+    val hasMultiLevel = any { it.tocLevel > 0 }
+    for (i in indices) {
+        val chapter = this[i]
+        if (!chapter.isVolume) continue
+        val next = getOrNull(i + 1)
+        result[i] = if (next == null) {
+            false
+        } else if (hasMultiLevel) {
+            next.tocLevel > chapter.tocLevel
+        } else {
+            !next.isVolume
+        }
+    }
+    return result
+}

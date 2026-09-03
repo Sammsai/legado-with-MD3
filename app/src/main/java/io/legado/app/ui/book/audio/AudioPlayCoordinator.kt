@@ -12,6 +12,7 @@ import io.legado.app.help.book.getBookSource
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.AudioPlay
 import io.legado.app.service.AudioPlayService
+import io.legado.app.ui.book.toc.computeHasSubChapters
 import io.legado.app.ui.widget.components.player.PlayerChapterUi
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -70,12 +71,14 @@ class AudioPlayCoordinator(
                     flowOf(persistentListOf())
                 } else {
                     bookRepository.flowChapters(bookUrl).map { chapterList ->
-                        chapterList.map { chapter ->
+                        val hasSubChapterArray = chapterList.computeHasSubChapters()
+                        chapterList.mapIndexed { index, chapter ->
                             PlayerChapterUi(
                                 index = chapter.index,
                                 title = chapter.title,
                                 isVolume = chapter.isVolume,
                                 tocLevel = chapter.tocLevel,
+                                hasSubChapters = hasSubChapterArray[index],
                             )
                         }.toImmutableList()
                     }

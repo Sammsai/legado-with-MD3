@@ -280,12 +280,12 @@ fun TocScreen(
             if (firstVisibleIndex !in state.items.indices) return@derivedStateOf null
 
             val firstVisibleItem = state.items[firstVisibleIndex]
-            val volumeIndex = if (firstVisibleItem.isVolume) {
+            val volumeIndex = if (firstVisibleItem.isVolume && firstVisibleItem.hasSubChapters) {
                 firstVisibleIndex
             } else {
                 (firstVisibleIndex - 1 downTo 0).firstOrNull {
                     val candidate = state.items[it]
-                    candidate.isVolume && candidate.tocLevel < firstVisibleItem.tocLevel
+                    candidate.isVolume && candidate.hasSubChapters && candidate.tocLevel < firstVisibleItem.tocLevel
                 }
             } ?: return@derivedStateOf null
             val volumeItem = state.items[volumeIndex]
@@ -762,7 +762,7 @@ fun ChapterListContent(
 
         state.items.forEach { uiItem ->
 
-            if (uiItem.isVolume) {
+            if (uiItem.isVolume && uiItem.hasSubChapters) {
 
                 item(key = "volume-${uiItem.id}") {
                     CollapsibleHeader(
