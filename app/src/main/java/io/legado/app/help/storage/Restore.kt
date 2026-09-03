@@ -389,7 +389,7 @@ object Restore : KoinComponent {
         }
     }
 
-    private fun localBookLocationStatus(bookUrl: String): LocalBookLocationStatus {
+    internal fun localBookLocationStatus(bookUrl: String): LocalBookLocationStatus {
         val uri = bookUrl.takeIf { it.isUri() }?.toUri()
         if (uri?.isContentScheme() == true) {
             // Provider 离线、临时权限问题与文件确实删除无法可靠区分，失败时保守保留记录。
