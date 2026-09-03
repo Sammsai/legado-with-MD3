@@ -134,38 +134,65 @@ class WebDavManager(
         val auth = requireAuthorization()
         val rootUrl = buildRootUrl(configFlow.value)
         val names = arrayListOf<String>()
-        var files = WebDav(rootUrl, auth).listFiles()
-        files = files.sortedWith { o1, o2 ->
-            AlphanumComparator.compare(o1.displayName, o2.displayName)
-        }.reversed()
-        files.forEach { webDav ->
-            val name = webDav.displayName
-            if (name.startsWith("backup")) {
-                names.add(name)
-            }
+        val files = WebDav(rootUrl, auth).listFiles()
+        val backupNameSet = Backup.backupFileNames.toSet()
+        val hasBackup = files.any {
+            !it.isDir && (backupNameSet.contains(it.displayName)
+                    || it.displayName.endsWith(".json")
+                    || it.displayName.endsWith(".xml"))
+        }
+        if (hasBackup) {
+            names.add("WebDAV 备份")
         }
         return names
     }
 
     @Throws(WebDavException::class)
-    suspend fun restoreWebDav(name: String) {
+    suspend fun restoreWebDav(name: String = "") {
         val auth = requireAuthorization()
+        if (!NetworkUtils.isAvailable()) throw WebDavException("网络不可用")
         val rootUrl = buildRootUrl(configFlow.value)
-        val webDav = WebDav(rootUrl + name, auth)
         BackupRestoreLock.withLock {
-            webDav.downloadTo(Backup.zipFilePath, true)
             FileUtils.delete(Backup.backupPath)
-            ZipUtils.unZipToPath(File(Backup.zipFilePath), Backup.backupPath)
+            val backupDir = File(Backup.backupPath).apply { mkdirs() }
+            val remoteFiles = WebDav(rootUrl, auth).listFiles()
+            val backupNameSet = Backup.backupFileNames.toSet()
+            var hasDownloadedAny = false
+            remoteFiles.forEach { webDavFile ->
+                if (!webDavFile.isDir && (backupNameSet.contains(webDavFile.displayName)
+                            || webDavFile.displayName.endsWith(".json")
+                            || webDavFile.displayName.endsWith(".xml"))
+                ) {
+                    val localFile = File(backupDir, webDavFile.displayName)
+                    WebDav(webDavFile.path, auth).downloadTo(localFile.absolutePath, true)
+                    hasDownloadedAny = true
+                }
+            }
+            if (!hasDownloadedAny) {
+                throw WebDavException("WebDAV 上未找到备份文件")
+            }
             Restore.restoreUnzipped(Backup.backupPath)
             LocalConfig.lastBackup = System.currentTimeMillis()
+            FileUtils.delete(Backup.backupPath)
         }
     }
 
-    suspend fun hasBackUp(backUpName: String): Boolean {
+    suspend fun hasBackUp(backUpName: String = ""): Boolean {
         val auth = requireAuthorization()
         val rootUrl = buildRootUrl(configFlow.value)
-        val url = "$rootUrl$backUpName"
-        return WebDav(url, auth).exists()
+        if (backUpName.isNotEmpty()) {
+            val url = "$rootUrl$backUpName"
+            return WebDav(url, auth).exists()
+        }
+        return kotlin.runCatching {
+            val files = WebDav(rootUrl, auth).listFiles()
+            val backupNameSet = Backup.backupFileNames.toSet()
+            files.any {
+                !it.isDir && (backupNameSet.contains(it.displayName)
+                        || it.displayName.endsWith(".json")
+                        || it.displayName.endsWith(".xml"))
+            }
+        }.getOrDefault(false)
     }
 
     suspend fun lastBackUp(): Result<WebDavFile?> {
@@ -173,8 +200,12 @@ class WebDavManager(
             val auth = requireAuthorization()
             val rootUrl = buildRootUrl(configFlow.value)
             var lastBackupFile: WebDavFile? = null
-            WebDav(rootUrl, auth).listFiles().reversed().forEach { webDavFile ->
-                if (webDavFile.displayName.startsWith("backup")) {
+            val backupNameSet = Backup.backupFileNames.toSet()
+            WebDav(rootUrl, auth).listFiles().forEach { webDavFile ->
+                if (!webDavFile.isDir && (backupNameSet.contains(webDavFile.displayName)
+                            || webDavFile.displayName.endsWith(".json")
+                            || webDavFile.displayName.endsWith(".xml"))
+                ) {
                     if (lastBackupFile == null || webDavFile.lastModify > lastBackupFile.lastModify) {
                         lastBackupFile = webDavFile
                     }
@@ -185,12 +216,19 @@ class WebDavManager(
     }
 
     @Throws(Exception::class)
-    suspend fun backUpWebDav(fileName: String) {
+    suspend fun backUpWebDav(sourceDirPath: String = Backup.backupPath) {
         if (!NetworkUtils.isAvailable()) return
         val auth = requireAuthorization()
         val rootUrl = buildRootUrl(configFlow.value)
-        val putUrl = "$rootUrl$fileName"
-        WebDav(putUrl, auth).upload(Backup.zipFilePath)
+        val sourceDir = File(sourceDirPath)
+        if (!sourceDir.exists() || !sourceDir.isDirectory) return
+        val files = sourceDir.listFiles() ?: return
+        files.forEach { file ->
+            if (file.isFile) {
+                val putUrl = "$rootUrl${file.name}"
+                WebDav(putUrl, auth).upload(file)
+            }
+        }
     }
 
     suspend fun exportWebDav(byteArray: ByteArray, fileName: String) {

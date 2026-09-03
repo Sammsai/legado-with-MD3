@@ -121,58 +121,84 @@ object AppWebDav {
     @Throws(Exception::class)
     suspend fun getBackupNames(): ArrayList<String> {
         val names = arrayListOf<String>()
-        authorization?.let {
-            var files = WebDav(rootWebDavUrl, it).listFiles()
-            files = files.sortedWith { o1, o2 ->
-                AlphanumComparator.compare(o1.displayName, o2.displayName)
-            }.reversed()
-            files.forEach { webDav ->
-                val name = webDav.displayName
-                if (name.startsWith("backup")) {
-                    names.add(name)
-                }
-            }
-        } ?: throw NoStackTraceException("webDav没有配置")
+        val auth = authorization ?: throw NoStackTraceException("webDav没有配置")
+        val files = WebDav(rootWebDavUrl, auth).listFiles()
+        val backupNameSet = Backup.backupFileNames.toSet()
+        val hasBackup = files.any {
+            !it.isDir && (backupNameSet.contains(it.displayName)
+                    || it.displayName.endsWith(".json")
+                    || it.displayName.endsWith(".xml"))
+        }
+        if (hasBackup) {
+            names.add("WebDAV 备份")
+        }
         return names
     }
 
     @Throws(WebDavException::class)
-    suspend fun restoreWebDav(name: String) {
-        authorization?.let {
-            val webDav = WebDav(rootWebDavUrl + name, it)
-            BackupRestoreLock.withLock {
-                webDav.downloadTo(Backup.zipFilePath, true)
-                FileUtils.delete(Backup.backupPath)
-                ZipUtils.unZipToPath(File(Backup.zipFilePath), Backup.backupPath)
-                Restore.restoreUnzipped(Backup.backupPath)
-                LocalConfig.lastBackup = System.currentTimeMillis()
+    suspend fun restoreWebDav(name: String = "") {
+        val auth = authorization ?: throw WebDavException("webDav未配置")
+        if (!NetworkUtils.isAvailable()) throw WebDavException("网络不可用")
+        BackupRestoreLock.withLock {
+            FileUtils.delete(Backup.backupPath)
+            val backupDir = File(Backup.backupPath).apply { mkdirs() }
+            val remoteFiles = WebDav(rootWebDavUrl, auth).listFiles()
+            val backupNameSet = Backup.backupFileNames.toSet()
+            var hasDownloadedAny = false
+            remoteFiles.forEach { webDavFile ->
+                currentCoroutineContext().ensureActive()
+                if (!webDavFile.isDir && (backupNameSet.contains(webDavFile.displayName)
+                            || webDavFile.displayName.endsWith(".json")
+                            || webDavFile.displayName.endsWith(".xml"))
+                ) {
+                    val localFile = File(backupDir, webDavFile.displayName)
+                    WebDav(webDavFile.path, auth).downloadTo(localFile.absolutePath, true)
+                    hasDownloadedAny = true
+                }
             }
+            if (!hasDownloadedAny) {
+                throw WebDavException("WebDAV 上未找到备份文件")
+            }
+            Restore.restoreUnzipped(Backup.backupPath)
+            LocalConfig.lastBackup = System.currentTimeMillis()
+            FileUtils.delete(Backup.backupPath)
+            downBgs()
         }
     }
 
-    suspend fun hasBackUp(backUpName: String): Boolean {
-        authorization?.let {
-            val url = "$rootWebDavUrl${backUpName}"
-            return WebDav(url, it).exists()
+    suspend fun hasBackUp(backUpName: String = ""): Boolean {
+        val auth = authorization ?: return false
+        if (backUpName.isNotEmpty()) {
+            val url = "$rootWebDavUrl$backUpName"
+            return WebDav(url, auth).exists()
         }
-        return false
+        return kotlin.runCatching {
+            val files = WebDav(rootWebDavUrl, auth).listFiles()
+            val backupNameSet = Backup.backupFileNames.toSet()
+            files.any {
+                !it.isDir && (backupNameSet.contains(it.displayName)
+                        || it.displayName.endsWith(".json")
+                        || it.displayName.endsWith(".xml"))
+            }
+        }.getOrDefault(false)
     }
 
     suspend fun lastBackUp(): Result<WebDavFile?> {
         return kotlin.runCatching {
-            authorization?.let {
-                var lastBackupFile: WebDavFile? = null
-                WebDav(rootWebDavUrl, it).listFiles().reversed().forEach { webDavFile ->
-                    if (webDavFile.displayName.startsWith("backup")) {
-                        if (lastBackupFile == null
-                            || webDavFile.lastModify > lastBackupFile.lastModify
-                        ) {
-                            lastBackupFile = webDavFile
-                        }
+            val auth = authorization ?: return@runCatching null
+            var lastBackupFile: WebDavFile? = null
+            val backupNameSet = Backup.backupFileNames.toSet()
+            WebDav(rootWebDavUrl, auth).listFiles().forEach { webDavFile ->
+                if (!webDavFile.isDir && (backupNameSet.contains(webDavFile.displayName)
+                            || webDavFile.displayName.endsWith(".json")
+                            || webDavFile.displayName.endsWith(".xml"))
+                ) {
+                    if (lastBackupFile == null || webDavFile.lastModify > lastBackupFile.lastModify) {
+                        lastBackupFile = webDavFile
                     }
                 }
-                lastBackupFile
             }
+            lastBackupFile
         }
     }
 
@@ -199,18 +225,45 @@ object AppWebDav {
         }
     }
 
-
-
     /**
      * webDav备份
-     * @param fileName 备份文件名
+     * @param sourceDirPath 本地备份文件所在目录
      */
     @Throws(Exception::class)
-    suspend fun backUpWebDav(fileName: String) {
+    suspend fun backUpWebDav(sourceDirPath: String = Backup.backupPath) {
         if (!NetworkUtils.isAvailable()) return
-        authorization?.let {
-            val putUrl = "$rootWebDavUrl$fileName"
-            WebDav(putUrl, it).upload(Backup.zipFilePath)
+        val auth = authorization ?: throw NoStackTraceException("webDav未配置")
+        val sourceDir = File(sourceDirPath)
+        if (!sourceDir.exists() || !sourceDir.isDirectory) return
+        val files = sourceDir.listFiles() ?: return
+        files.forEach { file ->
+            currentCoroutineContext().ensureActive()
+            if (file.isFile) {
+                val putUrl = "$rootWebDavUrl${file.name}"
+                WebDav(putUrl, auth).upload(file)
+            }
+        }
+    }
+
+    /**
+     * 上传本地书籍到 WebDAV books/ 目录
+     */
+    suspend fun upLocalBooks(books: List<Book>) {
+        val auth = authorization ?: return
+        if (!NetworkUtils.isAvailable()) return
+        val bookWebDav = defaultBookWebDav ?: RemoteBookWebDav("${rootWebDavUrl}books/", auth).also {
+            defaultBookWebDav = it
+        }
+        books.forEach { book ->
+            currentCoroutineContext().ensureActive()
+            kotlin.runCatching {
+                if (book.isLocal) {
+                    bookWebDav.upload(book)
+                }
+            }.onFailure { e ->
+                currentCoroutineContext().ensureActive()
+                AppLog.put("上传本地书籍失败: ${book.name}\n${e.localizedMessage}", e)
+            }
         }
     }
 
@@ -248,6 +301,26 @@ object AppWebDav {
     /**
      * 下载背景图片
      */
+    suspend fun downBgs() {
+        val authorization = authorization ?: return
+        if (!NetworkUtils.isAvailable()) return
+        val bgWebDavFiles = getAllBgWebDavFiles().getOrNull() ?: return
+        val bgDir = appCtx.externalFiles.getFile("bg").createFolderIfNotExist()
+        bgWebDavFiles.forEach { webDavFile ->
+            currentCoroutineContext().ensureActive()
+            if (!webDavFile.isDir) {
+                val localFile = File(bgDir, webDavFile.displayName)
+                if (!localFile.exists() || localFile.length() != webDavFile.size) {
+                    kotlin.runCatching {
+                        WebDav(webDavFile.path, authorization).downloadTo(localFile.absolutePath, true)
+                    }.onFailure {
+                        currentCoroutineContext().ensureActive()
+                        AppLog.put("下载背景图失败: ${webDavFile.displayName}\n${it.localizedMessage}", it)
+                    }
+                }
+            }
+        }
+    }
     suspend fun downBgs() {
         val authorization = authorization ?: return
         if (!NetworkUtils.isAvailable()) return

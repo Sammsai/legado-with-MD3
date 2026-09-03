@@ -63,7 +63,7 @@ object Backup {
 
     private const val TAG = "Backup"
 
-    private val backupFileNames by lazy {
+    val backupFileNames by lazy {
         arrayOf(
             "bookshelf.json",
             "bookmark.json",
@@ -117,12 +117,7 @@ object Backup {
             Coroutine.async {
                 BackupRestoreLock.withLock {
                     if (shouldBackup()) {
-                        val backupZipFileName = getNowZipFileName()
-                        if (!AppWebDav.hasBackUp(backupZipFileName)) {
-                            backup(context, backupSettingsGateway.currentSettings.backupPath)
-                        } else {
-                            LocalConfig.lastBackup = System.currentTimeMillis()
-                        }
+                        backup(context, backupSettingsGateway.currentSettings.backupPath)
                     }
                 }
             }.onError {
@@ -272,20 +267,20 @@ object Backup {
             .writeText(xmlBuilder.toString())
 
         currentCoroutineContext().ensureActive()
-        val zipFileName = getNowZipFileName()
-        val paths = backupFileNames
-            .map { File(backupPath, it) }
-            .filter(File::isFile)
-            .map(File::getAbsolutePath)
-        FileUtils.delete(zipFilePath)
-        FileUtils.delete(zipFilePath.replace("tmp_", ""))
-        val backupFileName = if (backupSettingsGateway.currentSettings.onlyLatestBackup) {
-            "backup.zip"
-        } else {
-            zipFileName
-        }
-        if (ZipUtils.zipFiles(paths, zipFilePath)) {
-            if (mode == "both" || mode == "local") {
+        if (mode == "both" || mode == "local") {
+            val zipFileName = getNowZipFileName()
+            val paths = backupFileNames
+                .map { File(backupPath, it) }
+                .filter(File::isFile)
+                .map(File::getAbsolutePath)
+            FileUtils.delete(zipFilePath)
+            FileUtils.delete(zipFilePath.replace("tmp_", ""))
+            val backupFileName = if (backupSettingsGateway.currentSettings.onlyLatestBackup) {
+                "backup.zip"
+            } else {
+                zipFileName
+            }
+            if (ZipUtils.zipFiles(paths, zipFilePath)) {
                 when {
                     path.isNullOrBlank() -> {
                         copyBackup(context.getExternalFilesDir(null)!!, backupFileName)
@@ -300,12 +295,17 @@ object Backup {
                     }
                 }
             }
-            if (mode == "both" || mode == "webdav") {
-                try {
-                    AppWebDav.backUpWebDav(zipFileName)
-                } catch (e: Exception) {
-                    AppLog.put("上传备份至webdav失败\n$e", e)
+            FileUtils.delete(zipFilePath)
+        }
+        if (mode == "both" || mode == "webdav") {
+            try {
+                if (!BackupConfig.backupIgnoreLocalBook) {
+                    val localBooks = appDb.bookDao.all.filter { it.isLocal }
+                    AppWebDav.upLocalBooks(localBooks)
                 }
+                AppWebDav.backUpWebDav(backupPath)
+            } catch (e: Exception) {
+                AppLog.put("上传备份至webdav失败\n$e", e)
             }
         }
         FileUtils.delete(backupPath)
