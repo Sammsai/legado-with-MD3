@@ -677,5 +677,3 @@ object AppWebDav {
     }
 
 }
-
-}
