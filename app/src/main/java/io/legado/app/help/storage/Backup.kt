@@ -63,8 +63,8 @@ object Backup {
 
     private const val TAG = "Backup"
 
-    val backupFileNames by lazy {
-        arrayOf(
+    val backupFileNames: Set<String> by lazy {
+        setOf(
             "bookshelf.json",
             "bookmark.json",
             "bookGroup.json",

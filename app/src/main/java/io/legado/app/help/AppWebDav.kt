@@ -6,8 +6,9 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
-import io.legado.app.exception.NoStackTraceException
 import io.legado.app.domain.gateway.BackupSettingsGateway
+import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.BackupRestoreLock
@@ -23,6 +24,9 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.compress.ZipUtils
+import io.legado.app.utils.createFolderIfNotExist
+import io.legado.app.utils.externalFiles
+import io.legado.app.utils.getFile
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJson
 import io.legado.app.utils.normalizeFileName
@@ -31,8 +35,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import splitties.init.appCtx
 import org.koin.core.context.GlobalContext
+import splitties.init.appCtx
 import java.io.File
 
 /**
@@ -123,7 +127,7 @@ object AppWebDav {
         val names = arrayListOf<String>()
         val auth = authorization ?: throw NoStackTraceException("webDav没有配置")
         val files = WebDav(rootWebDavUrl, auth).listFiles()
-        val backupNameSet = Backup.backupFileNames.toSet()
+        val backupNameSet = Backup.backupFileNames
         val hasBackup = files.any {
             !it.isDir && (backupNameSet.contains(it.displayName)
                     || it.displayName.endsWith(".json")
@@ -143,7 +147,7 @@ object AppWebDav {
             FileUtils.delete(Backup.backupPath)
             val backupDir = File(Backup.backupPath).apply { mkdirs() }
             val remoteFiles = WebDav(rootWebDavUrl, auth).listFiles()
-            val backupNameSet = Backup.backupFileNames.toSet()
+            val backupNameSet = Backup.backupFileNames
             var hasDownloadedAny = false
             remoteFiles.forEach { webDavFile ->
                 currentCoroutineContext().ensureActive()
@@ -174,7 +178,7 @@ object AppWebDav {
         }
         return kotlin.runCatching {
             val files = WebDav(rootWebDavUrl, auth).listFiles()
-            val backupNameSet = Backup.backupFileNames.toSet()
+            val backupNameSet = Backup.backupFileNames
             files.any {
                 !it.isDir && (backupNameSet.contains(it.displayName)
                         || it.displayName.endsWith(".json")
@@ -187,7 +191,7 @@ object AppWebDav {
         return kotlin.runCatching {
             val auth = authorization ?: return@runCatching null
             var lastBackupFile: WebDavFile? = null
-            val backupNameSet = Backup.backupFileNames.toSet()
+            val backupNameSet = Backup.backupFileNames
             WebDav(rootWebDavUrl, auth).listFiles().forEach { webDavFile ->
                 if (!webDavFile.isDir && (backupNameSet.contains(webDavFile.displayName)
                             || webDavFile.displayName.endsWith(".json")
@@ -320,13 +324,6 @@ object AppWebDav {
                 }
             }
         }
-    }
-    suspend fun downBgs() {
-        val authorization = authorization ?: return
-        if (!NetworkUtils.isAvailable()) return
-        val bgWebDavFiles = getAllBgWebDavFiles().getOrThrow()
-            .map { it.displayName }
-            .toSet()
     }
 
     @Suppress("unused")
