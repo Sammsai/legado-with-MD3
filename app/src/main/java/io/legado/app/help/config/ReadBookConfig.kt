@@ -576,7 +576,7 @@ object ReadBookConfig {
         val titleBottomSpacing: Int = 0,
         val titleColor: Int = 0,
         val titleColorNight: Int = 0,
-        val titleBold: Int = 500,//是否粗体字 0:正常, 1:粗体, 2:细体
+        val titleBold: Int = 1,//是否粗体字 0:正常, 1:粗体, 2:细体
         val titleLineSpacingExtra: Int = 12,
         val titleLineSpacingSub: Int = 12,
         val titleSegType: Int = 0,//分段模式

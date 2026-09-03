@@ -23,6 +23,7 @@ object ReaderAndroidPaintFactory {
             color = style.colorArgb
             textSize = style.fontSizePx
             typeface = loadTypeface(style.fontPath, style.fontWeight, false, style.fontFamily)
+            isFakeBoldText = style.fontWeight >= 600
             // Match the reader's synthetic italic; don't substitute another font's italic face.
             textSkewX = if (style.italic) -0.25f else 0f
             isLinearText = style.linearText
