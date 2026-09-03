@@ -557,7 +557,7 @@ object LocalBook {
                 webdav.downloadInputStream()
             }
             val remoteFileName = localBook.originName.ifBlank {
-                webdav.url.substringAfterLast("/")
+                webdav.path.substringAfterLast("/")
             }
             inputStream.use {
                 if (localBook.isArchive) {

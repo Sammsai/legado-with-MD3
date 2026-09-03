@@ -93,21 +93,27 @@ internal fun List<BookChapter>.reverseTocHierarchy(): List<BookChapter> {
  *    - 当存在 tocLevel > 0 的层级目录时：若紧随其后的章节 tocLevel > 当前 chapter.tocLevel，则 hasSubChapters = true；否则为 false。
  *    - 当所有章节 tocLevel == 0 的扁平分卷时：若紧随其后的章节 isVolume == false，则 hasSubChapters = true；否则为 false。
  */
-fun List<BookChapter>.computeHasSubChapters(): BooleanArray {
+inline fun <T> List<T>.computeHasSubChapters(
+    isVolume: (T) -> Boolean,
+    tocLevel: (T) -> Int,
+): BooleanArray {
     val result = BooleanArray(size)
     if (isEmpty()) return result
-    val hasMultiLevel = any { it.tocLevel > 0 }
+    val hasMultiLevel = any { tocLevel(it) > 0 }
     for (i in indices) {
         val chapter = this[i]
-        if (!chapter.isVolume) continue
+        if (!isVolume(chapter)) continue
         val next = getOrNull(i + 1)
         result[i] = if (next == null) {
             false
         } else if (hasMultiLevel) {
-            next.tocLevel > chapter.tocLevel
+            tocLevel(next) > tocLevel(chapter)
         } else {
-            !next.isVolume
+            !isVolume(next)
         }
     }
     return result
 }
+
+fun List<BookChapter>.computeHasSubChapters(): BooleanArray =
+    computeHasSubChapters(isVolume = { it.isVolume }, tocLevel = { it.tocLevel })

@@ -91,7 +91,10 @@ class ReadAloudPlayerViewModel(
         val activeIndex = source.textLines.indexOfLast {
             it.chapterPosition <= source.chapterPosition
         }
-        val hasSubChapterArray = source.chapters.computeHasSubChapters()
+        val hasSubChapterArray = source.chapters.computeHasSubChapters(
+            isVolume = { it.isVolume },
+            tocLevel = { it.tocLevel },
+        )
         val chapters = source.chapters.mapIndexed { index, chapter ->
             PlayerChapterUi(
                 index = chapter.index,

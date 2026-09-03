@@ -64,7 +64,7 @@ object AppWebDav {
 
     val isJianGuoYun get() = rootWebDavUrl.startsWith(defaultWebDavUrl, true)
 
-    private val rootWebDavUrl: String
+    val rootWebDavUrl: String
         get() {
             val configUrl = backupGateway.currentSettings.webDavUrl.trim()
             var url = if (configUrl.isEmpty()) defaultWebDavUrl else configUrl
