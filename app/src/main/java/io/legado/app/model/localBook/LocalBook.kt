@@ -92,7 +92,6 @@ object LocalBook {
             ?: let {
                 book.removeLocalUriCache()
                 val localArchiveUri = book.getArchiveUri()
-                val webDavUrl = book.getRemoteUrl()
                 if (localArchiveUri != null) {
                     // 重新导入对应的压缩包
                     importArchiveFile(localArchiveUri, book.originName) {
@@ -100,8 +99,8 @@ object LocalBook {
                     }.firstOrNull()?.let {
                         getBookInputStream(it)
                     }
-                } else if (webDavUrl != null && downloadRemoteBook(book)) {
-                    // 下载远程链接
+                } else if (downloadRemoteBook(book)) {
+                    // 下载远程链接或从WebDAV备份恢复
                     getBookInputStream(book)
                 } else {
                     null
@@ -479,8 +478,13 @@ object LocalBook {
     ): Uri {
         inputStream.use {
             val defaultBookTreeUri = otherSettingsGateway.currentSettings.defaultBookTreeUri
-            if (defaultBookTreeUri.isNullOrBlank()) throw NoBooksDirException()
-            val treeUri = defaultBookTreeUri.toUri()
+            val treeUri = if (!defaultBookTreeUri.isNullOrBlank()) {
+                defaultBookTreeUri.toUri()
+            } else {
+                val fallbackDir = File(appCtx.getExternalFilesDir(null) ?: appCtx.filesDir, "books")
+                if (!fallbackDir.exists()) fallbackDir.mkdirs()
+                Uri.fromFile(fallbackDir)
+            }
             return if (treeUri.isContentScheme()) {
                 val treeDoc = DocumentFile.fromTreeUri(appCtx, treeUri)
                 var doc = treeDoc!!.findFile(fileName)
@@ -529,11 +533,19 @@ object LocalBook {
 
     //下载book对应的远程文件 并更新Book
     private fun downloadRemoteBook(localBook: Book): Boolean {
-        val webDavUrl = localBook.getRemoteUrl()
-        if (webDavUrl.isNullOrBlank()) throw NoStackTraceException("Book file is not webDav File")
+        var webDavUrl = localBook.getRemoteUrl()
+        val auth = AppWebDav.authorization
+        if (webDavUrl.isNullOrBlank()) {
+            // 如果本地书籍没有远程链接，尝试从默认 WebDAV 的 books/ 目录寻找同名文件
+            if (auth == null || AppWebDav.rootWebDavUrl.isBlank()) {
+                return false
+            }
+            val fileName = localBook.originName.ifBlank {
+                localBook.name + if (localBook.isEpub) ".epub" else ".txt"
+            }
+            webDavUrl = "${AppWebDav.rootWebDavUrl}books/$fileName"
+        }
         try {
-            otherSettingsGateway.currentSettings.defaultBookTreeUri
-                ?: throw NoBooksDirException()
             // 兼容旧版链接
             val webdav: WebDav = kotlin.runCatching {
                 WebDav.fromPath(webDavUrl)
@@ -543,6 +555,9 @@ object LocalBook {
             }
             val inputStream = runBlocking {
                 webdav.downloadInputStream()
+            }
+            val remoteFileName = localBook.originName.ifBlank {
+                webdav.url.substringAfterLast("/")
             }
             inputStream.use {
                 if (localBook.isArchive) {
@@ -556,7 +571,7 @@ object LocalBook {
                 } else {
                     // txt epub pdf umd
                     val oldBook = localBook.copy()
-                    val fileUri = saveBookFile(it, localBook.originName)
+                    val fileUri = saveBookFile(it, remoteFileName)
                     val newBookUrl = FileDoc.fromUri(fileUri, false).toString()
                     if (!oldBook.canSafelyRebindTo(newBookUrl)) {
                         localBook.cacheLocalUri(fileUri)
