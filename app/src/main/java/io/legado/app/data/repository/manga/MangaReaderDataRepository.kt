@@ -18,6 +18,7 @@ import io.legado.app.domain.model.manga.OpenedMangaBook
 import io.legado.app.domain.usecase.GetReadingProgressUseCase
 import io.legado.app.domain.usecase.UploadReadingProgressUseCase
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalModified
@@ -206,8 +207,8 @@ class MangaReaderDataRepository(
                 )
             )
         }
-        if (backupSettingsGateway.currentSettings.syncBookProgressPlus) {
-            uploadReadingProgressUseCase.execute(book.toProgressState())
+        if (backupSettingsGateway.currentSettings.syncBookProgress) {
+            AppWebDav.downloadAllBookProgress()
         }
         if (inBookshelf && !BuildConfig.DEBUG) Backup.autoBack(application)
     }

@@ -53,6 +53,7 @@ import io.legado.app.domain.usecase.VerifyBookmarkTargetUseCase
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.feature.reader.core.navigation.ReaderChapterPagePosition
 import io.legado.app.feature.reader.core.navigation.ReaderPageContext
+import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isEpub
@@ -1616,12 +1617,12 @@ class ReadBookViewModel(
         _effects.tryEmit(ReadBookEffect.UnregisterTimeBatteryReceiver)
         _effects.tryEmit(ReadBookEffect.UnregisterNetworkListener)
 
-        if (!BuildConfig.DEBUG) {
-            if (backupSettingsGateway.currentSettings.syncBookProgressPlus) {
-                ReadBook.syncProgress()
-            } else {
-                ReadBook.uploadProgress()
+        if (backupSettingsGateway.currentSettings.syncBookProgress) {
+            Coroutine.async {
+                AppWebDav.downloadAllBookProgress()
             }
+        }
+        if (!BuildConfig.DEBUG) {
             _effects.tryEmit(ReadBookEffect.BackupNow)
         }
         justInitData = false
