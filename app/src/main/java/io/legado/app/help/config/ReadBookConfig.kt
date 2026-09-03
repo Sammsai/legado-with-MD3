@@ -266,7 +266,8 @@ object ReadBookConfig {
     val titleMode: Int
         get() = config.titleMode
     val titleSize: Int
-        get() = config.titleSize
+        // 兼容旧版本与预设数据：<8 表示相对正文字号偏移 (textSize + titleSize)，>=8 表示绝对字号
+        get() = config.titleSize.let { if (it < 8) (textSize + it).coerceIn(8, 60) else it }
 
     val titleSegType: Int
         get() = config.titleSegType
