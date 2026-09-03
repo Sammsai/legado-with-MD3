@@ -6,6 +6,8 @@ import androidx.core.content.edit
 import io.legado.app.data.local.preferences.LocalPreferencesKeys
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.repository.SettingsRepository
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getBoolean
 import io.legado.app.utils.putBoolean
 import io.legado.app.utils.putLong
@@ -158,5 +160,31 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
         set(value) {
             putBoolean("appCrash", value)
         }
+
+    fun getDeletedBooksLog(): Map<String, Long> {
+        val json = getString("deletedBooksLog", null) ?: return emptyMap()
+        return kotlin.runCatching {
+            GSON.fromJsonObject<Map<String, Long>>(json).getOrNull() ?: emptyMap()
+        }.getOrDefault(emptyMap())
+    }
+
+    fun setDeletedBooksLog(map: Map<String, Long>) {
+        putString("deletedBooksLog", GSON.toJson(map))
+    }
+
+    fun recordBookDeleted(bookUrl: String) {
+        val map = getDeletedBooksLog().toMutableMap()
+        map[bookUrl] = System.currentTimeMillis()
+        val cutoff = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
+        val pruned = map.filterValues { it > cutoff }
+        setDeletedBooksLog(pruned)
+    }
+
+    fun removeDeletedBook(bookUrl: String) {
+        val map = getDeletedBooksLog().toMutableMap()
+        if (map.remove(bookUrl) != null) {
+            setDeletedBooksLog(map)
+        }
+    }
 
 }

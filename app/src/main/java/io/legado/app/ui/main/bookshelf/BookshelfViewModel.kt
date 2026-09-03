@@ -27,6 +27,7 @@ import io.legado.app.domain.gateway.AppShellSettingsGateway
 import io.legado.app.domain.gateway.DownloadCacheSettingsGateway
 import io.legado.app.domain.gateway.ThemeSettingsGateway
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.AppWebDav
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.CacheBook
 import io.legado.app.model.SourceCallBack
@@ -665,6 +666,7 @@ class BookshelfViewModel(
 
         viewModelScope.launch {
             isInitialLoadingFlow.filter { !it }.collect {
+                AppWebDav.triggerBookshelfSync()
                 if (bookshelfSettings.value.autoRefreshBook) {
                     upAllBookToc()
                 }
@@ -894,6 +896,7 @@ class BookshelfViewModel(
     }
 
     fun refreshBooks(books: List<BookUiItem>) {
+        AppWebDav.triggerBookshelfSync()
         if (isRefreshingFlow.value) return
         isRefreshingFlow.value = true
         val limit = bookshelfSettings.value.bookshelfRefreshingLimit
@@ -941,6 +944,7 @@ class BookshelfViewModel(
         _scrollTrigger.tryEmit(Unit)
     }
     fun upAllBookToc() {
+        AppWebDav.triggerBookshelfSync()
         execute {
             addToWaitUp(bookRepository.getHasUpdateBooks())
         }

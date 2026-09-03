@@ -28,6 +28,7 @@ import io.legado.app.model.SourceCallBack
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.onEmpty
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.FileNotFoundException
 import kotlin.coroutines.coroutineContext
 
@@ -163,6 +165,45 @@ class ReadBookLoadDelegate(
         ReadBook.upMsg(null)
         host.checkReadRecordAlias(book)
 
+        // 打开阅读界面前，先与云端进度确认是否匹配
+        var preCheckHandled = false
+        if (backupSettingsGateway.currentSettings.syncBookProgress && ReadBook.inBookshelf && NetworkUtils.isAvailable()) {
+            withTimeoutOrNull(2500L) {
+                kotlin.runCatching {
+                    getReadingProgressUseCase.execute(book.name, book.author)?.toBookProgress()
+                }.getOrNull()
+            }?.let { cloudProgress ->
+                preCheckHandled = true
+                val cloudIsNewer = cloudProgress.durChapterIndex > book.durChapterIndex ||
+                        (cloudProgress.durChapterIndex == book.durChapterIndex && cloudProgress.durChapterPos > book.durChapterPos)
+                val cloudIsOlder = cloudProgress.durChapterIndex < book.durChapterIndex ||
+                        (cloudProgress.durChapterIndex == book.durChapterIndex && cloudProgress.durChapterPos < book.durChapterPos)
+
+                if (cloudIsNewer) {
+                    if (backupSettingsGateway.currentSettings.syncBookProgressPlus) {
+                        host.sureNewProgress(cloudProgress)
+                    } else if (cloudProgress.durChapterIndex < book.simulatedTotalChapterNum()) {
+                        book.durChapterIndex = cloudProgress.durChapterIndex
+                        book.durChapterPos = cloudProgress.durChapterPos
+                        book.durChapterTitle = cloudProgress.durChapterTitle
+                        book.durChapterTime = cloudProgress.durChapterTime
+                        book.syncTime = System.currentTimeMillis()
+                        ReadBook.upData(book)
+                        bookRepository.update(book)
+                        AppLog.put("打开阅读界面自动匹配到云端进度《${book.name}》 ${cloudProgress.durChapterTitle}")
+                    }
+                } else if (cloudIsOlder) {
+                    if (backupSettingsGateway.currentSettings.syncBookProgressPlus) {
+                        host.sureNewProgress(cloudProgress)
+                    } else {
+                        Coroutine.async(scope, Dispatchers.IO) {
+                            uploadBookProgress(book)
+                        }
+                    }
+                }
+            }
+        }
+
         if (!isSameBook) {
             ReadBook.loadContent(resetPageOffset = true) {
                 ReadBook.bookSource?.let {
@@ -188,7 +229,7 @@ class ReadBookLoadDelegate(
         }
         if (ReadBook.chapterChanged) {
             ReadBook.chapterChanged = false
-        } else if (!(isSameBook && BaseReadAloudService.isRun) && ReadBook.inBookshelf) {
+        } else if (!preCheckHandled && !(isSameBook && BaseReadAloudService.isRun) && ReadBook.inBookshelf) {
             if (backupSettingsGateway.currentSettings.syncBookProgressPlus) {
                 ReadBook.syncProgress({ progress -> host.sureNewProgress(progress) })
             } else {

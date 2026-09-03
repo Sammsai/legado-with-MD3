@@ -119,6 +119,13 @@ class MangaReaderDataRepository(
         } else chapterCount
         val safeChapter = book.durChapterIndex.coerceIn(0, (simulatedCount - 1).coerceAtLeast(0))
         val newerProgress = if (!chapterChanged) findNewerProgress(book) else null
+        val (finalChapter, finalPage) = if (newerProgress != null && !backupSettingsGateway.currentSettings.syncBookProgressPlus) {
+            persistProgress(book.bookUrl, newerProgress.chapterIndex, newerProgress.pageIndex)
+            newerProgress.chapterIndex.coerceIn(0, (simulatedCount - 1).coerceAtLeast(0)) to newerProgress.pageIndex.coerceAtLeast(0)
+        } else {
+            safeChapter to book.durChapterPos.coerceAtLeast(0)
+        }
+        val returnNewerProgress = if (backupSettingsGateway.currentSettings.syncBookProgressPlus) newerProgress else null
         return OpenedMangaBook(
             book = MangaBookState(
                 bookUrl = book.bookUrl,
@@ -135,10 +142,10 @@ class MangaReaderDataRepository(
                 isLocal = book.isLocal,
                 chapterTitles = database.bookChapterDao.getChapterList(book.bookUrl).map { it.title },
             ),
-            chapterIndex = safeChapter,
-            pageIndex = book.durChapterPos.coerceAtLeast(0),
+            chapterIndex = finalChapter,
+            pageIndex = finalPage,
             chapterCount = simulatedCount,
-            newerProgress = newerProgress,
+            newerProgress = returnNewerProgress,
         )
     }
 

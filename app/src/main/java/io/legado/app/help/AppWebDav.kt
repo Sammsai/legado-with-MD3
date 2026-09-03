@@ -12,6 +12,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.upType
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.BackupConfig
 import io.legado.app.help.storage.BackupRestoreLock
@@ -57,7 +58,15 @@ object AppWebDav {
     private val bgWebDavUrl get() = "${rootWebDavUrl}background/"
 
     private val configMutex = Mutex()
+    private val syncMutex = Mutex()
     private var appliedConfig: AppliedWebDavConfig? = null
+
+    fun triggerBookshelfSync() {
+        if (!backupGateway.currentSettings.syncBookProgress) return
+        Coroutine.async {
+            downloadAllBookProgress()
+        }
+    }
 
     @Volatile
     var authorization: Authorization? = null
@@ -445,148 +454,171 @@ object AppWebDav {
         val authorization = authorization ?: return
         if (!NetworkUtils.isAvailable()) return
 
-        kotlin.runCatching {
-            val rootWebDav = WebDav(rootWebDavUrl, authorization)
-            val rootFiles = kotlin.runCatching { rootWebDav.listFiles() }.getOrDefault(emptyList())
-            val rootFileMap = rootFiles.associateBy { it.displayName }
+        syncMutex.withLock {
+            kotlin.runCatching {
+                val rootWebDav = WebDav(rootWebDavUrl, authorization)
+                val rootFiles = kotlin.runCatching { rootWebDav.listFiles() }.getOrDefault(emptyList())
+                val rootFileMap = rootFiles.associateBy { it.displayName }
 
-            val remoteBookshelfFile = rootFileMap["bookshelf.json"]
-            val remoteBookGroupFile = rootFileMap["bookGroup.json"]
+                val remoteBookshelfFile = rootFileMap["bookshelf.json"]
+                val remoteBookGroupFile = rootFileMap["bookGroup.json"]
+                val remoteDeletedBooksFile = rootFileMap["deletedBooks.json"]
 
-            val bookProgressFiles = kotlin.runCatching {
-                WebDav(bookProgressUrl, authorization).listFiles()
-            }.getOrDefault(emptyList())
-            val progressMap = bookProgressFiles.associateBy { it.displayName }
+                val bookProgressFiles = kotlin.runCatching {
+                    WebDav(bookProgressUrl, authorization).listFiles()
+                }.getOrDefault(emptyList())
+                val progressMap = bookProgressFiles.associateBy { it.displayName }
 
-            val localBooks = appDb.bookDao.all
-            val localGroups = appDb.bookGroupDao.all
-
-            val localLastOpTime = calculateLocalLastOpTime(localBooks)
-
-            var remoteLastOpTime = 0L
-            var remoteBooks: List<Book>? = null
-
-            if (remoteBookshelfFile != null) {
-                remoteLastOpTime = maxOf(remoteLastOpTime, remoteBookshelfFile.lastModify)
-                val json = remoteBookshelfFile.download().toString(Charsets.UTF_8)
-                if (json.isJson()) {
-                    remoteBooks = GSON.fromJsonArray<Book>(json).getOrNull()
+                // 1. 同步并合并被删除书籍记录（Tombstones）
+                val localDeletedMap = LocalConfig.getDeletedBooksLog().toMutableMap()
+                if (remoteDeletedBooksFile != null) {
+                    val remoteDeletedJson = remoteDeletedBooksFile.download().toString(Charsets.UTF_8)
+                    if (remoteDeletedJson.isJson()) {
+                        GSON.fromJsonObject<Map<String, Long>>(remoteDeletedJson).getOrNull()?.let { remoteDeletedMap ->
+                            remoteDeletedMap.forEach { (url, time) ->
+                                val localTime = localDeletedMap[url] ?: 0L
+                                if (time > localTime) {
+                                    localDeletedMap[url] = time
+                                }
+                            }
+                        }
+                    }
                 }
-            }
+                val cutoff = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
+                val activeDeletedMap = localDeletedMap.filterValues { it > cutoff }.toMutableMap()
+                LocalConfig.setDeletedBooksLog(activeDeletedMap)
 
-            if (remoteBookGroupFile != null) {
-                remoteLastOpTime = maxOf(remoteLastOpTime, remoteBookGroupFile.lastModify)
-            }
-
-            remoteBooks?.forEach { rBook ->
-                remoteLastOpTime = maxOf(
-                    remoteLastOpTime,
-                    rBook.durChapterTime,
-                    rBook.lastCheckTime,
-                    rBook.latestChapterTime,
-                    rBook.syncTime
-                )
-            }
-
-            bookProgressFiles.forEach { pFile ->
-                remoteLastOpTime = maxOf(remoteLastOpTime, pFile.lastModify)
-            }
-
-            val bookshelfDiffers = remoteBooks != null && isBookshelfDifferent(localBooks, remoteBooks)
-
-            if (bookshelfDiffers) {
-                if (remoteLastOpTime > localLastOpTime) {
-                    // 云端较新，以云端书架覆盖本地
-                    applyRemoteBookshelf(remoteBooks!!, remoteBookGroupFile)
-                    applyRemoteProgressFiles(progressMap)
-                    LocalConfig.lastBackup = maxOf(LocalConfig.lastBackup, remoteLastOpTime)
-                } else {
-                    // 本地较新，应用云端进度中更新的部分后将本地书架及进度同步至云端
-                    applyRemoteProgressFiles(progressMap)
-                    uploadLocalBookshelfAndProgress(authorization, localBooks, localGroups)
+                var remoteBooks: List<Book>? = null
+                if (remoteBookshelfFile != null) {
+                    val json = remoteBookshelfFile.download().toString(Charsets.UTF_8)
+                    if (json.isJson()) {
+                        remoteBooks = GSON.fromJsonArray<Book>(json).getOrNull()
+                    }
                 }
-            } else {
-                // 书架结构相同或无云端书架文件，正常双向/增量同步阅读进度
+
+                val localBooks = appDb.bookDao.all.toMutableList()
+
+                // 2. 检查本地是否有已被其他端删除的书籍
+                val toDeleteLocally = mutableListOf<Book>()
+                localBooks.removeAll { lBook ->
+                    val deletedTime = activeDeletedMap[lBook.bookUrl]
+                    if (deletedTime != null && lBook.durChapterTime <= deletedTime) {
+                        toDeleteLocally.add(lBook)
+                        true
+                    } else {
+                        false
+                    }
+                }
+                if (toDeleteLocally.isNotEmpty()) {
+                    appDb.runInTransaction {
+                        toDeleteLocally.forEach { book ->
+                            appDb.bookChapterDao.delByBook(book.bookUrl)
+                            appDb.bookDao.delete(book)
+                        }
+                    }
+                }
+
+                // 3. 过滤掉远程中已被删除的书籍
+                val activeRemoteBooks = remoteBooks?.filter { rBook ->
+                    val deletedTime = activeDeletedMap[rBook.bookUrl]
+                    deletedTime == null || rBook.durChapterTime > deletedTime
+                }?.toMutableList() ?: mutableListOf()
+
+                // 4. 双向智能合并书架
+                var localChanged = false
+                var remoteNeedsUpload = (remoteBooks != null && remoteBooks.size != activeRemoteBooks.size)
+
+                val localBookMap = localBooks.associateBy { it.bookUrl }
+                val mergedBooks = linkedMapOf<String, Book>()
+
+                activeRemoteBooks.forEach { rBook ->
+                    rBook.upType()
+                    val lBook = localBookMap[rBook.bookUrl]
+                    if (lBook != null) {
+                        val remoteIsNewer = rBook.durChapterIndex > lBook.durChapterIndex ||
+                                (rBook.durChapterIndex == lBook.durChapterIndex && rBook.durChapterPos > lBook.durChapterPos)
+                        if (remoteIsNewer) {
+                            lBook.durChapterIndex = rBook.durChapterIndex
+                            lBook.durChapterPos = rBook.durChapterPos
+                            lBook.durChapterTitle = rBook.durChapterTitle
+                            lBook.durChapterTime = rBook.durChapterTime
+                            lBook.syncTime = maxOf(lBook.syncTime, rBook.syncTime)
+                            localChanged = true
+                        } else if (lBook.durChapterIndex > rBook.durChapterIndex ||
+                            (lBook.durChapterIndex == rBook.durChapterIndex && lBook.durChapterPos > rBook.durChapterPos)
+                        ) {
+                            remoteNeedsUpload = true
+                        }
+                        if (rBook.syncTime > lBook.syncTime) {
+                            lBook.group = rBook.group
+                            lBook.customTag = rBook.customTag
+                            lBook.order = rBook.order
+                            lBook.remark = rBook.remark
+                            localChanged = true
+                        }
+                        mergedBooks[lBook.bookUrl] = lBook
+                    } else {
+                        // 远程有而本地没有：A端新添加的书籍同步到B端
+                        if (rBook.isLocal) {
+                            rBook.coverUrl = LocalBook.getCoverPath(rBook)
+                        }
+                        mergedBooks[rBook.bookUrl] = rBook
+                        localChanged = true
+                    }
+                }
+
+                localBooks.forEach { lBook ->
+                    if (!mergedBooks.containsKey(lBook.bookUrl)) {
+                        mergedBooks[lBook.bookUrl] = lBook
+                        remoteNeedsUpload = true
+                    }
+                }
+
+                // 5. 应用到本地数据库
+                if (localChanged) {
+                    val currentDbBooks = appDb.bookDao.all.associateBy { it.bookUrl }
+                    val toInsert = mutableListOf<Book>()
+                    val toUpdate = mutableListOf<Book>()
+                    mergedBooks.values.forEach { book ->
+                        if (currentDbBooks.containsKey(book.bookUrl)) {
+                            toUpdate.add(book)
+                        } else {
+                            toInsert.add(book)
+                        }
+                    }
+                    appDb.runInTransaction {
+                        if (toUpdate.isNotEmpty()) appDb.bookDao.update(*toUpdate.toTypedArray())
+                        if (toInsert.isNotEmpty()) appDb.bookDao.insert(*toInsert.toTypedArray())
+                    }
+                }
+
+                // 6. 应用 WebDAV 单独进度文件
                 applyRemoteProgressFiles(progressMap)
-                if (remoteBookshelfFile == null && localBooks.isNotEmpty()) {
-                    uploadLocalBookshelfAndProgress(authorization, localBooks, localGroups)
+
+                // 7. 分组同步
+                if (remoteBookGroupFile != null) {
+                    val groupJson = remoteBookGroupFile.download().toString(Charsets.UTF_8)
+                    if (groupJson.isJson()) {
+                        GSON.fromJsonArray<BookGroup>(groupJson).getOrNull()?.let { remoteGroups ->
+                            val currentGroups = appDb.bookGroupDao.all
+                            val currentGroupIds = currentGroups.map { it.groupId }.toSet()
+                            val groupsToInsert = remoteGroups.filter { it.groupId !in currentGroupIds }
+                            if (groupsToInsert.isNotEmpty()) {
+                                appDb.bookGroupDao.insert(*groupsToInsert.toTypedArray())
+                            }
+                        }
+                    }
                 }
-            }
-        }.onFailure {
-            currentCoroutineContext().ensureActive()
-            AppLog.put("同步书架及阅读进度失败\n${it.localizedMessage}", it)
-        }
-    }
 
-    private fun calculateLocalLastOpTime(localBooks: List<Book>): Long {
-        var lastOp = LocalConfig.lastBackup
-        localBooks.forEach { book ->
-            lastOp = maxOf(
-                lastOp,
-                book.durChapterTime,
-                book.lastCheckTime,
-                book.latestChapterTime,
-                book.syncTime
-            )
-        }
-        return lastOp
-    }
-
-    private fun isBookshelfDifferent(localBooks: List<Book>, remoteBooks: List<Book>): Boolean {
-        if (localBooks.size != remoteBooks.size) return true
-        val localMap = localBooks.associateBy { it.bookUrl }
-        for (rBook in remoteBooks) {
-            val lBook = localMap[rBook.bookUrl] ?: return true
-            if (lBook.name != rBook.name ||
-                lBook.author != rBook.author ||
-                lBook.group != rBook.group ||
-                lBook.order != rBook.order ||
-                lBook.customTag != rBook.customTag ||
-                lBook.origin != rBook.origin ||
-                lBook.type != rBook.type
-            ) {
-                return true
-            }
-        }
-        return false
-    }
-
-    private suspend fun applyRemoteBookshelf(
-        remoteBooks: List<Book>,
-        remoteBookGroupFile: WebDavFile?
-    ) {
-        val currentLocalBooks = appDb.bookDao.all
-        remoteBooks.forEach { book ->
-            book.upType()
-        }
-        val restorePlan = planBookRestore(
-            restoredBooks = remoteBooks,
-            existingBooks = currentLocalBooks,
-            ignoreLocalBook = BackupConfig.ignoreLocalBook,
-            locationStatus = { Restore.localBookLocationStatus(it) }
-        )
-        restorePlan.booksToUpsert
-            .filter { book -> book.isLocal }
-            .forEach { book -> book.coverUrl = LocalBook.getCoverPath(book) }
-
-        appDb.runInTransaction {
-            if (restorePlan.booksToDelete.isNotEmpty()) {
-                appDb.bookDao.delete(*restorePlan.booksToDelete.toTypedArray())
-            }
-            if (restorePlan.booksToUpdate.isNotEmpty()) {
-                appDb.bookDao.update(*restorePlan.booksToUpdate.toTypedArray())
-            }
-            if (restorePlan.booksToInsert.isNotEmpty()) {
-                appDb.bookDao.insert(*restorePlan.booksToInsert.toTypedArray())
-            }
-        }
-
-        if (remoteBookGroupFile != null) {
-            val groupJson = remoteBookGroupFile.download().toString(Charsets.UTF_8)
-            if (groupJson.isJson()) {
-                GSON.fromJsonArray<BookGroup>(groupJson).getOrNull()?.let { groups ->
-                    appDb.bookGroupDao.replaceAll(groups)
+                // 8. 远端需要更新时上传
+                if (remoteNeedsUpload || remoteBookshelfFile == null || remoteDeletedBooksFile == null || toDeleteLocally.isNotEmpty()) {
+                    val finalBooks = appDb.bookDao.all
+                    val finalGroups = appDb.bookGroupDao.all
+                    uploadLocalBookshelfAndProgress(authorization, finalBooks, finalGroups, activeDeletedMap)
                 }
+            }.onFailure {
+                currentCoroutineContext().ensureActive()
+                AppLog.put("同步书架及阅读进度失败\n${it.localizedMessage}", it)
             }
         }
     }
@@ -617,7 +649,8 @@ object AppWebDav {
     private suspend fun uploadLocalBookshelfAndProgress(
         authorization: Authorization,
         localBooks: List<Book>,
-        localGroups: List<BookGroup>
+        localGroups: List<BookGroup>,
+        deletedMap: Map<String, Long> = emptyMap()
     ) {
         val rootWebDav = WebDav(rootWebDavUrl, authorization)
         rootWebDav.makeAsDir()
@@ -628,6 +661,11 @@ object AppWebDav {
         val bookGroupJson = GSON.toJson(localGroups)
         WebDav(rootWebDavUrl + "bookGroup.json", authorization).upload(bookGroupJson.toByteArray())
 
+        if (deletedMap.isNotEmpty()) {
+            val deletedJson = GSON.toJson(deletedMap)
+            WebDav(rootWebDavUrl + "deletedBooks.json", authorization).upload(deletedJson.toByteArray())
+        }
+
         val localLocalBooks = localBooks.filter { it.isLocal }
         if (localLocalBooks.isNotEmpty()) {
             upLocalBooks(localLocalBooks)
@@ -637,5 +675,7 @@ object AppWebDav {
         }
         LocalConfig.lastBackup = System.currentTimeMillis()
     }
+
+}
 
 }
