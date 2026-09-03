@@ -10,9 +10,10 @@ import io.legado.app.data.entities.BookProgress
 import io.legado.app.domain.gateway.BackupSettingsGateway
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.config.BackupConfig
+import io.legado.app.help.book.upType
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.storage.Backup
+import io.legado.app.help.storage.BackupConfig
 import io.legado.app.help.storage.BackupRestoreLock
 import io.legado.app.help.storage.Restore
 import io.legado.app.help.storage.planBookRestore
