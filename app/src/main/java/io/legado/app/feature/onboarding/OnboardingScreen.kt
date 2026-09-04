@@ -245,25 +245,30 @@ private fun WebDavPage(state: OnboardingUiState, onIntent: (OnboardingIntent) ->
             value = state.webDavUrl,
             onValueChange = { onIntent(OnboardingIntent.UpdateWebDavUrl(it)) },
             label = stringResource(R.string.web_dav_url),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
         )
         AppTextField(
             value = state.webDavAccount,
             onValueChange = { onIntent(OnboardingIntent.UpdateWebDavAccount(it)) },
             label = stringResource(R.string.web_dav_account),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
         )
         AppTextField(
             value = state.webDavPassword,
             onValueChange = { onIntent(OnboardingIntent.UpdateWebDavPassword(it)) },
             label = stringResource(R.string.web_dav_pw),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
         )
         AppTextField(
             value = state.webDavDir,
             onValueChange = { onIntent(OnboardingIntent.UpdateWebDavDir(it)) },
             label = stringResource(R.string.sub_dir),
-            modifier = Modifier.fillMaxWidth()
+            placeholder = { AppText("Read") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
         )
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),

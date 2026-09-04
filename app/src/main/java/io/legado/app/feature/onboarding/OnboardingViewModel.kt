@@ -41,7 +41,7 @@ class OnboardingViewModel(
             webDavUrl = backupSettingsGateway.currentSettings.webDavUrl,
             webDavAccount = backupSettingsGateway.currentSettings.webDavAccount,
             webDavPassword = backupSettingsGateway.currentSettings.webDavPassword,
-            webDavDir = backupSettingsGateway.currentSettings.webDavDir,
+            webDavDir = backupSettingsGateway.currentSettings.webDavDir.ifBlank { "Read" },
             appAccessPassword = LocalConfig.password ?: "",
             bookFolderUri = otherSettingsGateway.currentSettings.defaultBookTreeUri,
             theme = themeSettingsGateway.currentSettings,
@@ -163,10 +163,10 @@ class OnboardingViewModel(
         val state = _uiState.value
         backupSettingsGateway.update {
             it.copy(
-                webDavUrl = state.webDavUrl,
-                webDavAccount = state.webDavAccount,
+                webDavUrl = state.webDavUrl.trim(),
+                webDavAccount = state.webDavAccount.trim(),
                 webDavPassword = state.webDavPassword,
-                webDavDir = state.webDavDir,
+                webDavDir = state.webDavDir.trim().ifBlank { "Read" },
             )
         }
     }

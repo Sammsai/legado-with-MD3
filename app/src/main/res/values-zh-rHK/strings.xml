@@ -10,7 +10,7 @@
     <string name="menu_restore">還原</string>
     <string name="menu_import_old">導入閲讀數據</string>
     <string name="webdav_cache_backup">離線緩存書籍備份</string>
-    <string name="webdav_cache_backup_s">導出本地同時備份到legado文件夾下exports目錄</string>
+    <string name="webdav_cache_backup_s">導出本地同時備份到Read文件夾下exports目錄</string>
     <string name="backup_path">備份路徑</string>
     <string name="menu_import_old_version">導入舊版數據</string>
     <string name="menu_import_github">導入 Github 數據</string>

@@ -48,8 +48,8 @@ class BackupConfigViewModel(
 
     fun onIntent(intent: BackupConfigIntent) {
         when (intent) {
-            is BackupConfigIntent.SetWebDavUrl -> update { it.copy(webDavUrl = intent.value) }
-            is BackupConfigIntent.SetWebDavDir -> update { it.copy(webDavDir = intent.value) }
+            is BackupConfigIntent.SetWebDavUrl -> update { it.copy(webDavUrl = intent.value.trim()) }
+            is BackupConfigIntent.SetWebDavDir -> update { it.copy(webDavDir = intent.value.trim().ifBlank { "Read" }) }
             is BackupConfigIntent.SetWebDavDeviceName ->
                 update { it.copy(webDavDeviceName = intent.value) }
             is BackupConfigIntent.SetSyncBookProgress -> setSyncBookProgress(intent.value)
