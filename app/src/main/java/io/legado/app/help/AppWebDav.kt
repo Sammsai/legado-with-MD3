@@ -347,9 +347,7 @@ object AppWebDav {
                 }
 
                 val localSize = getLocalBookSize(book)
-                val existsOnWebDav = matchedFile != null && (matchedFile.size <= 0L || localSize <= 0L || matchedFile.size == localSize)
-
-                if (existsOnWebDav && matchedFile != null) {
+                if (matchedFile != null && (matchedFile.size <= 0L || localSize <= 0L || matchedFile.size == localSize)) {
                     // 已存在同名同大小书籍，无需重复上传
                     AppLog.put("WebDAV 已存在书籍，跳过上传: ${book.name} ($fileName)")
                     val filePutUrl = matchedFile.path
