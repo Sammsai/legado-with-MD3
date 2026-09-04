@@ -238,8 +238,6 @@ import io.legado.app.ui.book.explore.ExploreShowViewModel
 import io.legado.app.ui.book.group.GroupViewModel
 import io.legado.app.ui.book.import.local.ImportBookViewModel
 import io.legado.app.ui.book.import.remote.RemoteBookViewModel
-import io.legado.app.ui.book.import.remote.ServerConfigViewModel
-import io.legado.app.ui.book.import.remote.ServersViewModel
 import io.legado.app.ui.book.info.BookInfoViewModel
 import io.legado.app.ui.book.info.edit.BookInfoEditViewModel
 import io.legado.app.ui.book.knowledge.BookCharacterDetailViewModel
@@ -616,8 +614,6 @@ val appModule = module {
     viewModelOf(::TocViewModel)
     viewModelOf(::ImportBookViewModel)
     viewModelOf(::RemoteBookViewModel)
-    viewModelOf(::ServerConfigViewModel)
-    viewModelOf(::ServersViewModel)
     viewModelOf(::BookInfoViewModel)
     viewModel {
         WebViewModel(
