@@ -1617,10 +1617,8 @@ class ReadBookViewModel(
         _effects.tryEmit(ReadBookEffect.UnregisterTimeBatteryReceiver)
         _effects.tryEmit(ReadBookEffect.UnregisterNetworkListener)
 
-        if (backupSettingsGateway.currentSettings.syncBookProgress) {
-            Coroutine.async {
-                AppWebDav.downloadAllBookProgress()
-            }
+        if (backupSettingsGateway.currentSettings.syncBookProgress && ReadBook.inBookshelf) {
+            ReadBook.uploadProgress()
         }
         if (!BuildConfig.DEBUG) {
             _effects.tryEmit(ReadBookEffect.BackupNow)
@@ -2198,6 +2196,9 @@ class ReadBookViewModel(
         } else if (!ReadBook.inBookshelf) {
             removeCurrentNotShelfBookAndFinish()
         } else {
+            if (backupSettingsGateway.currentSettings.syncBookProgress) {
+                ReadBook.uploadProgress()
+            }
             stopReadAloudForClose()
             _effects.tryEmit(ReadBookEffect.Finish)
         }
@@ -2225,6 +2226,9 @@ class ReadBookViewModel(
             }
             ReadBook.inBookshelf = true
         }.onSuccess {
+            if (backupSettingsGateway.currentSettings.syncBookProgress) {
+                ReadBook.uploadProgress()
+            }
             _uiState.update { it.copy(activeDialog = null) }
             stopReadAloudForClose()
             _effects.tryEmit(ReadBookEffect.Finish)

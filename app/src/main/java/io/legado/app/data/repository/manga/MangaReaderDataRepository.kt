@@ -214,8 +214,9 @@ class MangaReaderDataRepository(
                 )
             )
         }
-        if (backupSettingsGateway.currentSettings.syncBookProgress) {
-            AppWebDav.downloadAllBookProgress()
+        if (backupSettingsGateway.currentSettings.syncBookProgress && inBookshelf) {
+            uploadReadingProgressUseCase.execute(book.toProgressState())
+            AppWebDav.triggerBookshelfSync()
         }
         if (inBookshelf && !BuildConfig.DEBUG) Backup.autoBack(application)
     }

@@ -277,6 +277,9 @@ object ReadBook : CoroutineScope by MainScope(), KoinComponent {
     /** 清空当前会话持有的 Book（仅置空引用，不动章节/进度状态）。 */
     fun clearCurrentBook() {
         book = null
+        lastUploadedChapterIndex = -1
+        lastUploadedChapterPos = -1
+        lastUploadTime = 0L
         publishSnapshot()
     }
 
@@ -296,6 +299,9 @@ object ReadBook : CoroutineScope by MainScope(), KoinComponent {
     // endregion
 
     fun resetData(book: Book) {
+        lastUploadedChapterIndex = -1
+        lastUploadedChapterPos = -1
+        lastUploadTime = 0L
         wholeBookPageCoordinator.clear()
         ReadBook.book = book
         readRecord.bookName = book.name
@@ -779,15 +785,45 @@ object ReadBook : CoroutineScope by MainScope(), KoinComponent {
             }
     }
 
+    private var lastUploadedChapterIndex: Int = -1
+    private var lastUploadedChapterPos: Int = -1
+    private var lastUploadTime: Long = 0L
+
     fun uploadProgress(toast: Boolean = false, successAction: (() -> Unit)? = null) {
-        book?.let {
-            launch(IO) {
-                AppWebDav.uploadBookProgress(it, toast) {
-                    successAction?.invoke()
+        val book = book ?: return
+        // 确保内存中的 book 同步了当前实际的阅读进度
+        book.durChapterIndex = durChapterIndex
+        book.durChapterPos = durChapterPos
+        book.durChapterTime = System.currentTimeMillis()
+
+        // 避免极短时间内对相同章节和位置重复上传（例如连续触发 close 和 pause）
+        val now = System.currentTimeMillis()
+        if (lastUploadedChapterIndex == durChapterIndex &&
+            lastUploadedChapterPos == durChapterPos &&
+            now - lastUploadTime < 5000L
+        ) {
+            return
+        }
+        lastUploadedChapterIndex = durChapterIndex
+        lastUploadedChapterPos = durChapterPos
+        lastUploadTime = now
+
+        launch(IO) {
+            if (book.durChapterTitle.isNullOrEmpty()) {
+                appDb.bookChapterDao.getChapter(book.bookUrl, durChapterIndex)?.let {
+                    book.durChapterTitle = it.getDisplayTitle(
+                        ContentProcessor.get(book.name, book.origin).getTitleReplaceRules(),
+                        book.getUseReplaceRule(otherSettingsGateway.currentSettings.replaceEnableDefault),
+                        chineseConverterType = readSettingsGateway.currentSettings.chineseConverterType,
+                    )
                 }
-                ensureActive()
-                it.update()
             }
+            AppWebDav.uploadBookProgress(book, toast) {
+                successAction?.invoke()
+            }
+            ensureActive()
+            book.update()
+            AppWebDav.triggerBookshelfSync()
         }
     }
 
@@ -1719,13 +1755,14 @@ object ReadBook : CoroutineScope by MainScope(), KoinComponent {
 
     fun saveRead(pageChanged: Boolean = false) {
         val book = book ?: return
+        // 立即在主线程/调用线程更新内存对象的进度属性，避免异步写入落后于后续的 uploadProgress 读取
+        val chapterChanged = book.durChapterIndex != durChapterIndex
+        book.durChapterIndex = durChapterIndex
+        book.durChapterPos = durChapterPos
+        book.durChapterTime = System.currentTimeMillis()
         executor.execute {
             kotlin.runCatching {
                 book.lastCheckCount = 0
-                book.durChapterTime = System.currentTimeMillis()
-                val chapterChanged = book.durChapterIndex != durChapterIndex
-                book.durChapterIndex = durChapterIndex
-                book.durChapterPos = durChapterPos
                 if (!pageChanged || chapterChanged) {
                     pendingProgressSave = false
                     progressSaveHandler.removeCallbacks(pendingProgressSaveRunnable)

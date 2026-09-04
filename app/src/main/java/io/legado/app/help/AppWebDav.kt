@@ -19,6 +19,7 @@ import io.legado.app.help.storage.BackupRestoreLock
 import io.legado.app.help.storage.Restore
 import io.legado.app.help.storage.planBookRestore
 import io.legado.app.lib.webdav.Authorization
+import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.lib.webdav.WebDavFile
@@ -391,7 +392,12 @@ object AppWebDav {
             val bookProgress = BookProgress(book)
             val json = GSON.toJson(bookProgress)
             val url = getProgressUrl(book.name, book.author)
-            WebDav(url, authorization).upload(json.toByteArray(), "application/json")
+            try {
+                WebDav(url, authorization).upload(json.toByteArray(), "application/json")
+            } catch (e: Exception) {
+                WebDav(bookProgressUrl, authorization).makeAsDir()
+                WebDav(url, authorization).upload(json.toByteArray(), "application/json")
+            }
             book.syncTime = System.currentTimeMillis()
             onSuccess?.invoke()
         } catch (e: Exception) {
@@ -419,7 +425,12 @@ object AppWebDav {
             }
             val json = GSON.toJson(bookProgress)
             val url = getProgressUrl(bookProgress.name, bookProgress.author)
-            WebDav(url, authorization).upload(json.toByteArray(), "application/json")
+            try {
+                WebDav(url, authorization).upload(json.toByteArray(), "application/json")
+            } catch (e: Exception) {
+                WebDav(bookProgressUrl, authorization).makeAsDir()
+                WebDav(url, authorization).upload(json.toByteArray(), "application/json")
+            }
             onSuccess?.invoke()
             return true
         } catch (e: Exception) {
@@ -455,15 +466,13 @@ object AppWebDav {
                 val json = String(byteArray)
                 if (json.isJson()) {
                     return GSON.fromJsonObject<BookProgress>(json).getOrNull()
-
                 }
-
-
-
             }
         }.onFailure {
             currentCoroutineContext().ensureActive()
-            AppLog.put("获取书籍进度失败\n${it.localizedMessage}", it)
+            if (it !is ObjectNotFoundException) {
+                AppLog.put("获取书籍进度失败\n${it.localizedMessage}", it)
+            }
         }
         return null
     }
