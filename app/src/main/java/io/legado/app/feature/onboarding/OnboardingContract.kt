@@ -17,7 +17,7 @@ data class OnboardingUiState(
     val webDavUrl: String = "",
     val webDavAccount: String = "",
     val webDavPassword: String = "",
-    val webDavDir: String = "legado",
+    val webDavDir: String = "Read",
     val appAccessPassword: String = "",
     val bookFolderUri: String? = null,
     val theme: ThemeSettings = ThemeSettings(),

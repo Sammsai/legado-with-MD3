@@ -41,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,7 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.legado.app.R
-import io.legado.app.ui.book.changecover.ChangeCoverDialog
+import io.legado.app.ui.book.info.ChangeCoverSheet
 import io.legado.app.ui.theme.LegadoTheme
 import io.legado.app.ui.theme.fadingEdge
 import io.legado.app.ui.widget.components.AppScaffold
@@ -76,7 +77,6 @@ import io.legado.app.ui.widget.components.topbar.TopBarActionButton
 import io.legado.app.ui.widget.components.topbar.TopBarNavigationButton
 import io.legado.app.utils.SelectImageContract
 import io.legado.app.utils.launch
-import io.legado.app.utils.showDialogFragment
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -147,6 +147,7 @@ fun BookInfoEditContent(
     onOpenEventList: (String) -> Unit,
 ) {
     val context = LocalContext.current
+    var showChangeCoverSheet by rememberSaveable { mutableStateOf(false) }
 
     val selectCover = rememberLauncherForActivityResult(SelectImageContract()) {
         it.uri?.let { uri ->
@@ -176,14 +177,7 @@ fun BookInfoEditContent(
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     MediumOutlinedButton(
-                        onClick = {
-                            (context as? BookInfoEditActivity)?.showDialogFragment(
-                                ChangeCoverDialog(
-                                    uiState.name,
-                                    uiState.author
-                                )
-                            )
-                        },
+                        onClick = { showChangeCoverSheet = true },
                         icon = Icons.Default.ImageSearch,
                         contentDescription = stringResource(R.string.refresh_cover)
                     )
@@ -337,6 +331,17 @@ private fun BookKnowledgeEditCard(
             }
         }
     }
+
+    ChangeCoverSheet(
+        show = showChangeCoverSheet,
+        name = uiState.name,
+        author = uiState.author,
+        onDismissRequest = { showChangeCoverSheet = false },
+        onSelect = { coverUrl ->
+            showChangeCoverSheet = false
+            viewModel.onCoverUrlChange(coverUrl)
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

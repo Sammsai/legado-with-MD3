@@ -182,7 +182,7 @@ fun BackupConfigScreen(
                     InputSettingItem(
                         title = stringResource(R.string.sub_dir),
                         value = settings.webDavDir,
-                        defaultValue = "legado",
+                        defaultValue = "Read",
                         onConfirm = { onIntent(BackupConfigIntent.SetWebDavDir(it)) },
                     )
                     InputSettingItem(

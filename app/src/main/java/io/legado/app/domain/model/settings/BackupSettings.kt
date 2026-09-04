@@ -4,7 +4,7 @@ data class BackupSettings(
     val webDavUrl: String = "",
     val webDavAccount: String = "",
     val webDavPassword: String = "",
-    val webDavDir: String = "legado",
+    val webDavDir: String = "Read",
     val webDavDeviceName: String = "",
     val syncBookProgress: Boolean = true,
     val syncBookProgressPlus: Boolean = false,

@@ -50,7 +50,6 @@ import io.legado.app.ui.book.audio.AudioPlayIntent
 import io.legado.app.ui.book.audio.AudioPlayScreenContent
 import io.legado.app.ui.book.audio.AudioPlayViewModel
 import io.legado.app.ui.book.cache.manage.BookCacheManageRouteScreen
-import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.explore.ExploreShowIntent
 import io.legado.app.ui.book.explore.ExploreShowRouteScreen
 import io.legado.app.ui.book.explore.ExploreShowViewModel
@@ -831,10 +830,6 @@ fun MainActivity.mainEntryProvider(
         LaunchedEffect(audioPlayViewModel) {
             audioPlayViewModel.effects.collectLatest { effect ->
                 when (effect) {
-                    is AudioPlayEffect.OpenChangeSource -> showDialogFragment(
-                        ChangeBookSourceDialog(effect.bookName, effect.author)
-                    )
-
                     is AudioPlayEffect.OpenLogin -> startActivity(
                         MainActivity.createSourceLoginIntent(
                             this@mainEntryProvider,

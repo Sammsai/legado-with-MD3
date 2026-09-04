@@ -143,7 +143,17 @@ class AudioPlayViewModel(
             AudioPlayIntent.DismissSheet -> activeSheet.value = null
             AudioPlayIntent.ChangeSource -> {
                 val book = AudioPlay.book ?: return
-                effect(AudioPlayEffect.OpenChangeSource(book.name, book.author))
+                activeSheet.value = AudioPlaySheet.ChangeSource(book)
+            }
+
+            is AudioPlayIntent.ChangeSourceTo -> {
+                activeSheet.value = null
+                changeTo(intent.source, intent.book, intent.toc)
+            }
+
+            is AudioPlayIntent.AddSourceAsNew -> {
+                activeSheet.value = null
+                addToBookshelf(intent.book, intent.toc)
             }
 
             AudioPlayIntent.Login -> {

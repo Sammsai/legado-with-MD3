@@ -4,10 +4,9 @@ import android.os.Bundle
 import org.koin.androidx.viewmodel.ext.android.viewModel
 import androidx.compose.runtime.Composable
 import io.legado.app.base.BaseComposeActivity
-import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.main.MainActivity
 
-class BookInfoEditActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
+class BookInfoEditActivity : BaseComposeActivity() {
 
     private val viewModel by viewModel<BookInfoEditViewModel>()
 
@@ -42,11 +41,6 @@ class BookInfoEditActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
         intent.getStringExtra("bookUrl")?.let {
             viewModel.loadBook(it)
         }
-    }
-
-    override fun coverChangeTo(coverUrl: String) {
-        // 更新封面 URL
-        viewModel.onCoverUrlChange(coverUrl)
     }
 
 }

@@ -38,8 +38,6 @@ import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppConst.appInfo
-import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.domain.gateway.BackupSettingsGateway
 import io.legado.app.domain.gateway.MangaSettingsGateway
@@ -55,7 +53,6 @@ import io.legado.app.service.WebService
 import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.about.UpdateDialog
 import io.legado.app.ui.book.audio.AudioPlayViewModel
-import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.read.ReadBookInputHandler
 import io.legado.app.ui.book.read.ReadBookRouteHost
 import io.legado.app.ui.book.read.page.entities.PageDirection
@@ -80,8 +77,7 @@ import kotlin.coroutines.suspendCoroutine
 /**
  * 主界面
  */
-open class MainActivity : BaseComposeActivity(), AudioPlay.CallBack,
-    ChangeBookSourceDialog.CallBack {
+open class MainActivity : BaseComposeActivity(), AudioPlay.CallBack {
 
     private data class RouteEvent(
         val route: NavKey,
@@ -706,19 +702,6 @@ open class MainActivity : BaseComposeActivity(), AudioPlay.CallBack,
 
     override fun upLyricP(position: Int) {
         // 歌词暂不在界面展示
-    }
-
-    // ===== ChangeBookSourceDialog.CallBack（有声书换源对话框，转发给当前播放器）=====
-
-    override val oldBook: Book?
-        get() = AudioPlay.book
-
-    override fun changeTo(source: BookSource, book: Book, toc: List<BookChapter>) {
-        activeAudioPlayViewModel?.changeTo(source, book, toc)
-    }
-
-    override fun addToBookshelf(book: Book, toc: List<BookChapter>) {
-        activeAudioPlayViewModel?.addToBookshelf(book, toc)
     }
 
 }

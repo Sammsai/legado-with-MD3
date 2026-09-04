@@ -4,6 +4,9 @@ import androidx.compose.runtime.Stable
 import io.legado.app.constant.CoverRatio
 import io.legado.app.constant.ReadAloudBgMode
 import io.legado.app.constant.Status
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookSource
 import io.legado.app.model.AudioPlay
 import io.legado.app.ui.widget.components.player.PlayerChapterUi
 import kotlinx.collections.immutable.ImmutableList
@@ -56,6 +59,7 @@ sealed interface AudioPlaySheet {
     data object CoverRatioOptions : AudioPlaySheet
     data object Speed : AudioPlaySheet
     data object Timer : AudioPlaySheet
+    data class ChangeSource(val book: Book) : AudioPlaySheet
 }
 
 sealed interface AudioPlayIntent {
@@ -78,6 +82,15 @@ sealed interface AudioPlayIntent {
     data class OpenSheet(val sheet: AudioPlaySheet) : AudioPlayIntent
     data object DismissSheet : AudioPlayIntent
     data object ChangeSource : AudioPlayIntent
+    data class ChangeSourceTo(
+        val source: BookSource,
+        val book: Book,
+        val toc: List<BookChapter>,
+    ) : AudioPlayIntent
+    data class AddSourceAsNew(
+        val book: Book,
+        val toc: List<BookChapter>,
+    ) : AudioPlayIntent
     data object Login : AudioPlayIntent
     data object CopyPlayUrl : AudioPlayIntent
     data object EditSource : AudioPlayIntent
@@ -90,7 +103,6 @@ sealed interface AudioPlayIntent {
 sealed interface AudioPlayEffect {
     data object Finish : AudioPlayEffect
     data class ShowToast(val message: String) : AudioPlayEffect
-    data class OpenChangeSource(val bookName: String, val author: String) : AudioPlayEffect
     data class OpenLogin(val sourceUrl: String) : AudioPlayEffect
     data object CopyPlayUrl : AudioPlayEffect
     data class OpenEditSource(val sourceUrl: String) : AudioPlayEffect

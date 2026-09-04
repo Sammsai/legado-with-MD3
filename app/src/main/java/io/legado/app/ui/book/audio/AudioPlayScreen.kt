@@ -83,6 +83,7 @@ import io.legado.app.R
 import io.legado.app.constant.CoverRatio
 import io.legado.app.constant.ReadAloudBgMode
 import io.legado.app.constant.Status
+import io.legado.app.data.entities.Book
 import io.legado.app.domain.model.PlaybackTimer
 import io.legado.app.model.AudioPlay
 import io.legado.app.ui.theme.LegadoTheme
@@ -91,6 +92,7 @@ import io.legado.app.ui.util.rememberBlurBackdrop
 import io.legado.app.ui.widget.components.AppScaffold
 import io.legado.app.ui.widget.components.button.series.MediumPlainButton
 import io.legado.app.ui.widget.components.button.series.SmallAnimatedButton
+import io.legado.app.ui.widget.components.changeSource.ChangeSourceSheet
 import io.legado.app.ui.widget.components.icon.AppIcons
 import io.legado.app.ui.widget.components.image.cover.BookCoverImage
 import io.legado.app.ui.widget.components.log.AppLogSheet
@@ -548,6 +550,25 @@ fun AudioPlayScreenContent(
         show = state.activeSheet == AudioPlaySheet.Log,
         onDismissRequest = { onIntent(AudioPlayIntent.DismissSheet) },
     )
+    val changeSourceSheet = state.activeSheet as? AudioPlaySheet.ChangeSource
+    var cachedChangeSourceBook by remember { mutableStateOf<Book?>(null) }
+    if (changeSourceSheet != null) {
+        cachedChangeSourceBook = changeSourceSheet.book
+    }
+    val currentChangeSourceBook = cachedChangeSourceBook
+    if (currentChangeSourceBook != null) {
+        ChangeSourceSheet(
+            show = changeSourceSheet != null,
+            oldBook = currentChangeSourceBook,
+            onDismissRequest = { onIntent(AudioPlayIntent.DismissSheet) },
+            onReplace = { source, newBook, toc, _ ->
+                onIntent(AudioPlayIntent.ChangeSourceTo(source, newBook, toc))
+            },
+            onAddAsNew = { newBook, toc ->
+                onIntent(AudioPlayIntent.AddSourceAsNew(newBook, toc))
+            },
+        )
+    }
 }
 
 private const val AUDIO_GAIN_MIN = -6000
