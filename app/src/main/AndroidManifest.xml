@@ -513,14 +513,16 @@
             tools:node="merge">
             <meta-data
                 android:name="androidx.emoji2.text.EmojiCompatInitializer"
-                tools:node="remove" />
+                tools:node="remove"
+                tools:ignore_warning="true" />
         </provider>
 
         <provider
             android:name="com.google.firebase.provider.FirebaseInitProvider"
             android:authorities="${applicationId}.firebaseinitprovider"
             android:exported="false"
-            tools:node="remove" />
+            tools:node="remove"
+            tools:ignore_warning="true" />
 
         <meta-data
             android:name="channel"

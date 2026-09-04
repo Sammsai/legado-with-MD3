@@ -24,7 +24,7 @@ class MarkingEffectTest {
     }
 
     @Test
-    fun `效果到样式 - 背景色自动加 ~20% 透明度`() {
+    fun `效果到样式 - 背景色自动加百分之二十透明度`() {
         val style = MarkingEffect.BG.toStyle(0xFFFFD54F.toInt())
         assertEquals(0x33FFD54F.toInt(), style.bgColor)
         assertEquals(0, style.underlineMode)

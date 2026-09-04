@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.info
 
-import io.legado.app.ui.config.themeConfig.ThemeConfig
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -14,7 +13,7 @@ class BookInfoBackdropStyleTest {
                 blurCover = false,
                 applySeedOverlay = true,
             ),
-            resolveBookInfoBackdropStyle(ThemeConfig.BOOK_INFO_BACKGROUND_BLUR_OFF)
+            resolveBookInfoBackdropStyle(BookInfoBackdropStyle.MODE_OFF)
         )
         assertEquals(
             BookInfoBackdropStyle(
@@ -22,7 +21,7 @@ class BookInfoBackdropStyleTest {
                 blurCover = true,
                 applySeedOverlay = true,
             ),
-            resolveBookInfoBackdropStyle(ThemeConfig.BOOK_INFO_BACKGROUND_BLUR_ON)
+            resolveBookInfoBackdropStyle(BookInfoBackdropStyle.MODE_ON)
         )
         assertEquals(
             BookInfoBackdropStyle(
@@ -30,7 +29,7 @@ class BookInfoBackdropStyleTest {
                 blurCover = false,
                 applySeedOverlay = false,
             ),
-            resolveBookInfoBackdropStyle(ThemeConfig.BOOK_INFO_BACKGROUND_COVER_HIDDEN)
+            resolveBookInfoBackdropStyle(BookInfoBackdropStyle.MODE_OFF_FOR_DEFAULT)
         )
     }
 }

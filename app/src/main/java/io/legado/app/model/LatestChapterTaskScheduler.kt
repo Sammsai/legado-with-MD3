@@ -72,17 +72,23 @@ internal class LatestChapterTaskScheduler<K>(
     private fun startLocked(key: K, entry: Entry, request: Request) {
         val token = Any()
         val job = scope.launch(context, start = CoroutineStart.LAZY) {
+            var caughtCancellation: CancellationException? = null
+            var caughtFailure: Throwable? = null
             try {
                 request.block(this)
-                request.result.complete(Unit)
             } catch (error: CancellationException) {
-                request.result.cancel(error)
+                caughtCancellation = error
                 throw error
             } catch (error: Throwable) {
-                request.result.completeExceptionally(error)
+                caughtFailure = error
                 onError(key, error)
             } finally {
                 onTaskFinished(key, token)
+                when {
+                    caughtCancellation != null -> request.result.cancel(caughtCancellation)
+                    caughtFailure != null -> request.result.completeExceptionally(caughtFailure)
+                    else -> request.result.complete(Unit)
+                }
             }
         }
         entry.running = Running(token = token, job = job)
