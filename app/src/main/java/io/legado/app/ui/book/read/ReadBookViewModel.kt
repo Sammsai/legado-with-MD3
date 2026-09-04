@@ -53,7 +53,6 @@ import io.legado.app.domain.usecase.VerifyBookmarkTargetUseCase
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.feature.reader.core.navigation.ReaderChapterPagePosition
 import io.legado.app.feature.reader.core.navigation.ReaderPageContext
-import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isEpub
@@ -277,25 +276,19 @@ class ReadBookViewModel(
 
     private val aiHost = object : ReadAiDelegate.Host {
         override val activeSheet: ReadBookSheet? get() = _uiState.value.activeSheet
-
         override val chapterName: String get() = _uiState.value.chapterName
 
         override fun setActiveSheet(sheet: ReadBookSheet?) {
             _uiState.update { it.copy(activeSheet = sheet) }
         }
 
-        override fun closeReadMenu() {
-            this@ReadBookViewModel.closeReadMenu()
-        }
+        override fun closeReadMenu() = this@ReadBookViewModel.closeReadMenu()
 
         override fun showToast(message: String) {
             _effects.tryEmit(ReadBookEffect.ShowToast(message))
         }
 
-        override fun reloadChapterAfterContentProcessChanged(
-            bookUrl: String,
-            chapterIndex: Int,
-        ) {
+        override fun reloadChapterAfterContentProcessChanged(bookUrl: String, chapterIndex: Int) {
             contentProcessDelegate.reloadCurrentChapter(bookUrl, chapterIndex)
         }
 
@@ -1529,18 +1522,11 @@ class ReadBookViewModel(
                 }
             }
 
-            is ReadBookIntent.PageAnimChanged -> {
-                _effects.tryEmit(ReadBookEffect.PageAnimChanged)
-            }
-
-            is ReadBookIntent.DownloadChapters -> {
+            is ReadBookIntent.PageAnimChanged -> _effects.tryEmit(ReadBookEffect.PageAnimChanged)
+            is ReadBookIntent.DownloadChapters ->
                 _effects.tryEmit(ReadBookEffect.DownloadChapters(intent.start, intent.end))
-            }
-
-            is ReadBookIntent.SaveChapterContent -> {
-                ReadBook.book?.let {
-                    saveContent(it, intent.content, intent.chapterIndex)
-                }
+            is ReadBookIntent.SaveChapterContent -> ReadBook.book?.let {
+                saveContent(it, intent.content, intent.chapterIndex)
             }
 
             is ReadBookIntent.OnResume -> handleOnResume()
@@ -1617,9 +1603,7 @@ class ReadBookViewModel(
         _effects.tryEmit(ReadBookEffect.UnregisterTimeBatteryReceiver)
         _effects.tryEmit(ReadBookEffect.UnregisterNetworkListener)
 
-        if (backupSettingsGateway.currentSettings.syncBookProgress && ReadBook.inBookshelf) {
-            ReadBook.uploadProgress()
-        }
+        uploadBookProgressIfEnabled()
         if (!BuildConfig.DEBUG) {
             _effects.tryEmit(ReadBookEffect.BackupNow)
         }
@@ -2186,28 +2170,32 @@ class ReadBookViewModel(
 
     private var closeReadBookKeepReadAloud = false
 
+    private fun uploadBookProgressIfEnabled() {
+        if (backupSettingsGateway.currentSettings.syncBookProgress && ReadBook.inBookshelf) {
+            ReadBook.uploadProgress()
+        }
+    }
+
+    private fun finishCloseReadBook() {
+        uploadBookProgressIfEnabled()
+        stopReadAloudForClose()
+        _effects.tryEmit(ReadBookEffect.Finish)
+    }
+
     private fun closeReadBook(keepReadAloud: Boolean = false) {
         closeReadBookKeepReadAloud = keepReadAloud
         val book = ReadBook.book
         if (!ReadBook.inBookshelf && book != null && otherSettingsGateway.currentSettings.showAddToShelfAlert) {
-            _uiState.update {
-                it.copy(activeDialog = ReadBookDialog.ConfirmAddToBookshelf(book.name))
-            }
+            _uiState.update { it.copy(activeDialog = ReadBookDialog.ConfirmAddToBookshelf(book.name)) }
         } else if (!ReadBook.inBookshelf) {
             removeCurrentNotShelfBookAndFinish()
         } else {
-            if (backupSettingsGateway.currentSettings.syncBookProgress) {
-                ReadBook.uploadProgress()
-            }
-            stopReadAloudForClose()
-            _effects.tryEmit(ReadBookEffect.Finish)
+            finishCloseReadBook()
         }
     }
 
     private fun stopReadAloudForClose() {
-        if (closeReadBookKeepReadAloud || !BaseReadAloudService.isRun) {
-            return
-        }
+        if (closeReadBookKeepReadAloud || !BaseReadAloudService.isRun) return
         ReadAloud.stop(context)
         _uiState.update { it.copy(isReadAloudRunning = false, isReadAloudPaused = false) }
     }
@@ -2217,21 +2205,13 @@ class ReadBookViewModel(
         execute {
             val toc = bookRepository.getChapters(book.bookUrl)
             book.removeType(BookType.notShelf)
-            if (book.order == 0) {
-                book.order = bookRepository.getMinOrder() - 1
-            }
+            if (book.order == 0) book.order = bookRepository.getMinOrder() - 1
             bookRepository.insert(book)
-            if (toc.isNotEmpty()) {
-                bookRepository.insertChapters(*toc.toTypedArray())
-            }
+            if (toc.isNotEmpty()) bookRepository.insertChapters(*toc.toTypedArray())
             ReadBook.inBookshelf = true
         }.onSuccess {
-            if (backupSettingsGateway.currentSettings.syncBookProgress) {
-                ReadBook.uploadProgress()
-            }
             _uiState.update { it.copy(activeDialog = null) }
-            stopReadAloudForClose()
-            _effects.tryEmit(ReadBookEffect.Finish)
+            finishCloseReadBook()
         }.onError {
             AppLog.put("添加书籍到书架失败", it)
             _effects.tryEmit(ReadBookEffect.ShowToast("添加书籍失败"))

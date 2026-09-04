@@ -1,5 +1,6 @@
 package io.legado.app.model.analyzeRule
 
+import android.app.Application
 import com.script.rhino.RhinoScriptEngine
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -34,7 +35,7 @@ import org.robolectric.annotation.Config
  * 校验时 `BookSourceCheckRepository.checkSource` 判定 “搜索失效/发现失效” -> 书源被判为失效。
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(application = Application::class, sdk = [35])
 class AnalyzeRuleFastPathReproTest {
 
     /** 模拟 `ruleBookList: @js:xxx` 返回的 JS 对象数组中的单个条目（NativeObject） */
