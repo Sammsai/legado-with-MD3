@@ -276,6 +276,17 @@ fun BookInfoEditContent(
             modifier = Modifier.fillMaxWidth()
         )
     }
+
+    ChangeCoverSheet(
+        show = showChangeCoverSheet,
+        name = uiState.name,
+        author = uiState.author,
+        onDismissRequest = { showChangeCoverSheet = false },
+        onSelect = { coverUrl ->
+            showChangeCoverSheet = false
+            viewModel.onCoverUrlChange(coverUrl)
+        },
+    )
 }
 
 @Composable
@@ -331,17 +342,6 @@ private fun BookKnowledgeEditCard(
             }
         }
     }
-
-    ChangeCoverSheet(
-        show = showChangeCoverSheet,
-        name = uiState.name,
-        author = uiState.author,
-        onDismissRequest = { showChangeCoverSheet = false },
-        onSelect = { coverUrl ->
-            showChangeCoverSheet = false
-            viewModel.onCoverUrlChange(coverUrl)
-        },
-    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
