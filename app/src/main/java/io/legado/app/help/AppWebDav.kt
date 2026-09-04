@@ -10,10 +10,13 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.domain.gateway.BackupSettingsGateway
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.book.localFileName
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.upType
+import io.legado.app.help.book.update
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.storage.Backup
@@ -29,6 +32,7 @@ import io.legado.app.lib.webdav.WebDavFile
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.utils.AlphanumComparator
+import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
@@ -39,6 +43,7 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isJson
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.toastOnUi
@@ -269,19 +274,104 @@ object AppWebDav {
     }
 
     /**
+     * 获取 WebDAV books/（或兼容大小写的 Books/）目录下的文件列表
+     */
+    private suspend fun getBooksWebDavFiles(auth: Authorization): Pair<String, List<WebDavFile>> {
+        val standardBooksUrl = "${rootWebDavUrl}books/"
+        val standardWebDav = WebDav(standardBooksUrl, auth)
+        val files = runCatching { standardWebDav.listFiles() }.getOrNull()
+        if (files != null && files.isNotEmpty()) {
+            return standardBooksUrl to files
+        }
+
+        // 兼容已有的 Books/ 目录（如历史版本或其他客户端创建的目录）
+        val legacyBooksUrl = "${rootWebDavUrl}Books/"
+        val legacyFiles = runCatching { WebDav(legacyBooksUrl, auth).listFiles() }.getOrNull()
+        if (legacyFiles != null && legacyFiles.isNotEmpty()) {
+            return legacyBooksUrl to legacyFiles
+        }
+
+        // 若 books/ 目录尚未创建或为空，确保创建 standardBooksUrl
+        standardWebDav.makeAsDir()
+        return standardBooksUrl to (files ?: emptyList())
+    }
+
+    private fun getLocalBookSize(book: Book): Long {
+        return runCatching {
+            val uri = Uri.parse(book.bookUrl)
+            if (uri.isContentScheme()) {
+                FileDoc.fromUri(uri, false).size
+            } else {
+                File(uri.path.orEmpty()).length()
+            }
+        }.getOrDefault(-1L)
+    }
+
+    /**
      * 上传本地书籍到 WebDAV books/ 目录
      */
     suspend fun upLocalBooks(books: List<Book>) {
         val auth = authorization ?: return
         if (!NetworkUtils.isAvailable()) return
-        val bookWebDav = defaultBookWebDav ?: RemoteBookWebDav("${rootWebDavUrl}books/", auth).also {
-            defaultBookWebDav = it
+        val localBooks = books.filter { it.isLocal }
+        if (localBooks.isEmpty()) return
+
+        val (booksUrl, remoteFiles) = getBooksWebDavFiles(auth)
+        val bookWebDav = defaultBookWebDav?.takeIf { it.rootBookUrl == booksUrl }
+            ?: RemoteBookWebDav(booksUrl, auth).also {
+                defaultBookWebDav = it
+            }
+
+        // 以文件名和 URL 路径建立索引
+        val remoteFileMap = HashMap<String, WebDavFile>(remoteFiles.size * 2)
+        remoteFiles.forEach { file ->
+            if (!file.isDir) {
+                remoteFileMap[file.displayName] = file
+                val decodedName = file.path.removeSuffix("/").substringAfterLast("/")
+                if (decodedName.isNotBlank() && decodedName != file.displayName) {
+                    remoteFileMap[decodedName] = file
+                }
+            }
         }
-        books.forEach { book ->
+
+        localBooks.forEach { book ->
             currentCoroutineContext().ensureActive()
             kotlin.runCatching {
-                if (book.isLocal) {
+                val fileName = book.localFileName
+                val remoteUrl = book.getRemoteUrl()
+                val matchedFile = if (!remoteUrl.isNullOrBlank()) {
+                    val remoteFileName = remoteUrl.substringBefore(",").removeSuffix("/").substringAfterLast("/")
+                    remoteFileMap[remoteFileName] ?: remoteFileMap[fileName]
+                } else {
+                    remoteFileMap[fileName]
+                }
+
+                val localSize = getLocalBookSize(book)
+                val existsOnWebDav = matchedFile != null && (matchedFile.size <= 0L || localSize <= 0L || matchedFile.size == localSize)
+
+                if (existsOnWebDav && matchedFile != null) {
+                    // 已存在同名同大小书籍，无需重复上传
+                    AppLog.put("WebDAV 已存在书籍，跳过上传: ${book.name} ($fileName)")
+                    val filePutUrl = matchedFile.path
+                    val expectedOrigin = BookType.webDavTag + filePutUrl
+                    if (book.origin != expectedOrigin) {
+                        book.origin = expectedOrigin
+                    }
+                    book.lastCheckTime = System.currentTimeMillis()
+                    book.update()
+                } else {
                     bookWebDav.upload(book)
+                    val newRemoteFile = WebDavFile(
+                        urlStr = "$booksUrl$fileName",
+                        authorization = auth,
+                        displayName = fileName,
+                        urlName = fileName,
+                        size = if (localSize > 0) localSize else 0L,
+                        contentType = "",
+                        resourceType = "",
+                        lastModify = System.currentTimeMillis()
+                    )
+                    remoteFileMap[fileName] = newRemoteFile
                 }
             }.onFailure { e ->
                 currentCoroutineContext().ensureActive()

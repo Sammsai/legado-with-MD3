@@ -7,6 +7,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.domain.gateway.OtherSettingsGateway
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.book.localFileName
 import io.legado.app.help.book.update
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
@@ -72,7 +73,8 @@ class RemoteBookWebDav(
     override suspend fun upload(book: Book) {
         if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络不可用")
         val localBookUri = Uri.parse(book.bookUrl)
-        val putUrl = "$rootBookUrl${book.originName}"
+        val fileName = book.localFileName
+        val putUrl = "$rootBookUrl$fileName"
         val webDav = WebDav(putUrl, authorization)
         if (localBookUri.isContentScheme()) {
             webDav.upload(localBookUri)
@@ -82,6 +84,7 @@ class RemoteBookWebDav(
         book.origin = BookType.webDavTag + CustomUrl(putUrl)
             .putAttribute("serverID", serverID)
             .toString()
+        book.lastCheckTime = System.currentTimeMillis()
         book.update()
     }
 

@@ -33,6 +33,7 @@ import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.exists
 import io.legado.app.utils.find
 import io.legado.app.utils.inputStream
+import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isUri
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.splitNotBlank
@@ -109,6 +110,32 @@ val Book.archiveName: String
         // local_book::archive.rar
         // webDav::https://...../archive.rar
         return origin.substringAfter("::").substringAfterLast("/")
+    }
+
+val Book.localFileName: String
+    get() {
+        if (originName.isNotBlank()) {
+            return originName
+        }
+        val uriName = runCatching {
+            val uri = Uri.parse(bookUrl)
+            if (uri.isContentScheme()) {
+                FileDoc.fromUri(uri, false).name
+            } else {
+                uri.lastPathSegment
+            }
+        }.getOrNull()
+        if (!uriName.isNullOrBlank()) {
+            return uriName
+        }
+        val ext = when {
+            isEpub -> ".epub"
+            isUmd -> ".umd"
+            isPdf -> ".pdf"
+            isMobi -> ".mobi"
+            else -> ".txt"
+        }
+        return "$name$ext"
     }
 
 fun Book.getBookTypeName(): String {
