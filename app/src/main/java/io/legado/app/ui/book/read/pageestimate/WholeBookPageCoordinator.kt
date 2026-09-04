@@ -109,7 +109,7 @@ class WholeBookPageCoordinator(
                 }
             }
             if (staleChapterIds.isNotEmpty()) {
-                scope.launch(Dispatchers.IO) {
+                withContext(Dispatchers.IO) {
                     staleChapterIds.forEach { chapterId ->
                         runCatching { exactPageCountStore.deleteChapter(bookId, chapterId) }
                     }
