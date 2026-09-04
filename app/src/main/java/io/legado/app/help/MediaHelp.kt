@@ -10,6 +10,7 @@ import androidx.media.AudioManagerCompat
 import io.legado.app.R
 import splitties.systemservices.audioManager
 
+@Suppress("DEPRECATION")
 object MediaHelp {
 
     const val MEDIA_SESSION_ACTIONS = (PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS

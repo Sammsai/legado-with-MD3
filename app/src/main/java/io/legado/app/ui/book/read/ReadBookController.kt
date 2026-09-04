@@ -1046,6 +1046,7 @@ class ReadBookController(
     }
 
     @SuppressLint("WrongConstant")
+    @Suppress("DEPRECATION")
     override fun upSystemUiVisibility(isInMultiWindow: Boolean, toolBarHide: Boolean) {
         val window = activity.window
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

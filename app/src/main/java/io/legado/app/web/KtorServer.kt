@@ -1,6 +1,7 @@
 package io.legado.app.web
 
 import android.graphics.Bitmap
+import com.google.gson.Strictness
 import io.ktor.http.*
 import io.ktor.http.content.*
 import io.ktor.serialization.gson.*
@@ -42,7 +43,7 @@ class KtorServer(private val port: Int) {
         server = embeddedServer(CIO, port = port) {
             install(ContentNegotiation) {
                 gson {
-                    setLenient()
+                    setStrictness(Strictness.LENIENT)
                 }
             }
             install(CORS) {
@@ -87,7 +88,7 @@ class KtorServer(private val port: Int) {
                                 }
                                 else -> {}
                             }
-                            part.dispose()
+                            part.release()
                         }
                         if (fileName != null && tempFile.exists()) {
                             val returnData = withContext(Dispatchers.IO) {

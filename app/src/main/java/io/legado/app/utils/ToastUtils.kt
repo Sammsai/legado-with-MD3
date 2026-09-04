@@ -71,6 +71,7 @@ fun Context.longToastOnUiLegacy(message: CharSequence) {
 /**
  * JS 专用弹窗，短时间显示
  */
+@Suppress("DEPRECATION")
 fun Context.toastForJs(message: CharSequence?, duration: Int = Toast.LENGTH_SHORT) {
     runOnUI {
         kotlin.runCatching {

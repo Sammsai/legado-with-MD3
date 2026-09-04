@@ -29,6 +29,7 @@ object WebViewDataCleaner {
         }
     }
 
+    @Suppress("DEPRECATION")
     private suspend fun clearPlatformData(context: Context) {
         val cookieManager = CookieManager.getInstance()
         suspendCancellableCoroutine { continuation ->
