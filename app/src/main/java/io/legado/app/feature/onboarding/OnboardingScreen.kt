@@ -259,6 +259,12 @@ private fun WebDavPage(state: OnboardingUiState, onIntent: (OnboardingIntent) ->
             label = stringResource(R.string.web_dav_pw),
             modifier = Modifier.fillMaxWidth()
         )
+        AppTextField(
+            value = state.webDavDir,
+            onValueChange = { onIntent(OnboardingIntent.UpdateWebDavDir(it)) },
+            label = stringResource(R.string.sub_dir),
+            modifier = Modifier.fillMaxWidth()
+        )
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.padding(top = 4.dp)

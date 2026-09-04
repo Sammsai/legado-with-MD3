@@ -17,6 +17,7 @@ data class OnboardingUiState(
     val webDavUrl: String = "",
     val webDavAccount: String = "",
     val webDavPassword: String = "",
+    val webDavDir: String = "legado",
     val appAccessPassword: String = "",
     val bookFolderUri: String? = null,
     val theme: ThemeSettings = ThemeSettings(),
@@ -33,6 +34,7 @@ sealed interface OnboardingIntent {
     data class UpdateWebDavUrl(val value: String) : OnboardingIntent
     data class UpdateWebDavAccount(val value: String) : OnboardingIntent
     data class UpdateWebDavPassword(val value: String) : OnboardingIntent
+    data class UpdateWebDavDir(val value: String) : OnboardingIntent
 
     /** 应用访问密码，旧实现即时写入 LocalConfig.password */
     data class UpdateAppAccessPassword(val value: String) : OnboardingIntent

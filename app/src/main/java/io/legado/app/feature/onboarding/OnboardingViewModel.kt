@@ -41,6 +41,7 @@ class OnboardingViewModel(
             webDavUrl = backupSettingsGateway.currentSettings.webDavUrl,
             webDavAccount = backupSettingsGateway.currentSettings.webDavAccount,
             webDavPassword = backupSettingsGateway.currentSettings.webDavPassword,
+            webDavDir = backupSettingsGateway.currentSettings.webDavDir,
             appAccessPassword = LocalConfig.password ?: "",
             bookFolderUri = otherSettingsGateway.currentSettings.defaultBookTreeUri,
             theme = themeSettingsGateway.currentSettings,
@@ -83,6 +84,8 @@ class OnboardingViewModel(
                 _uiState.update { it.copy(webDavAccount = intent.value) }
             is OnboardingIntent.UpdateWebDavPassword ->
                 _uiState.update { it.copy(webDavPassword = intent.value) }
+            is OnboardingIntent.UpdateWebDavDir ->
+                _uiState.update { it.copy(webDavDir = intent.value) }
             is OnboardingIntent.UpdateAppAccessPassword -> {
                 LocalConfig.password = intent.value
                 _uiState.update { it.copy(appAccessPassword = intent.value) }
@@ -137,6 +140,9 @@ class OnboardingViewModel(
         if (state.page == 0) {
             LocalConfig.privacyPolicyOk = true
         }
+        if (state.page == 1) {
+            viewModelScope.launch { saveWebDavConfig() }
+        }
         if (state.page >= state.pageCount - 1) {
             _effects.tryEmit(OnboardingEffect.NavigateHome)
         } else {
@@ -160,6 +166,7 @@ class OnboardingViewModel(
                 webDavUrl = state.webDavUrl,
                 webDavAccount = state.webDavAccount,
                 webDavPassword = state.webDavPassword,
+                webDavDir = state.webDavDir,
             )
         }
     }
