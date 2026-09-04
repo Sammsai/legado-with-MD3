@@ -379,6 +379,15 @@ object AppWebDav {
         if (!backupGateway.currentSettings.syncBookProgress) return
         if (!NetworkUtils.isAvailable()) return
         try {
+            val remoteProgress = getBookProgress(book.name, book.author)
+            if (remoteProgress != null) {
+                val remoteIsNewer = remoteProgress.durChapterIndex > book.durChapterIndex ||
+                        (remoteProgress.durChapterIndex == book.durChapterIndex && remoteProgress.durChapterPos > book.durChapterPos)
+                if (remoteIsNewer) {
+                    AppLog.put("云端阅读进度较新，跳过上传《${book.name}》 (云端: ${remoteProgress.durChapterTitle}, 本地: ${book.durChapterTitle})")
+                    return
+                }
+            }
             val bookProgress = BookProgress(book)
             val json = GSON.toJson(bookProgress)
             val url = getProgressUrl(book.name, book.author)
@@ -399,6 +408,15 @@ object AppWebDav {
             val authorization = authorization ?: return false
             if (!backupGateway.currentSettings.syncBookProgress) return false
             if (!NetworkUtils.isAvailable()) return false
+            val remoteProgress = getBookProgress(bookProgress.name, bookProgress.author)
+            if (remoteProgress != null) {
+                val remoteIsNewer = remoteProgress.durChapterIndex > bookProgress.durChapterIndex ||
+                        (remoteProgress.durChapterIndex == bookProgress.durChapterIndex && remoteProgress.durChapterPos > bookProgress.durChapterPos)
+                if (remoteIsNewer) {
+                    AppLog.put("云端阅读进度较新，跳过上传《${bookProgress.name}》")
+                    return false
+                }
+            }
             val json = GSON.toJson(bookProgress)
             val url = getProgressUrl(bookProgress.name, bookProgress.author)
             WebDav(url, authorization).upload(json.toByteArray(), "application/json")
@@ -524,32 +542,32 @@ object AppWebDav {
                     deletedTime == null || rBook.durChapterTime > deletedTime
                 }?.toMutableList() ?: mutableListOf()
 
-                // 4. 双向智能合并书架
+                // 4. 先应用 WebDAV 独立的阅读进度文件（阅读进度以 bookProgress 为单一真实可信来源）
+                applyRemoteProgressFiles(progressMap)
+
+                // 5. 双向智能合并书架元数据
+                val refreshedLocalBooks = appDb.bookDao.all.toMutableList()
+                val localBookMap = refreshedLocalBooks.associateBy { it.bookUrl }
+                val mergedBooks = linkedMapOf<String, Book>()
                 var localChanged = false
                 var remoteNeedsUpload = (remoteBooks != null && remoteBooks.size != activeRemoteBooks.size)
-
-                val localBookMap = localBooks.associateBy { it.bookUrl }
-                val mergedBooks = linkedMapOf<String, Book>()
 
                 activeRemoteBooks.forEach { rBook ->
                     rBook.upType()
                     val lBook = localBookMap[rBook.bookUrl]
                     if (lBook != null) {
-                        val remoteIsNewer = rBook.durChapterIndex > lBook.durChapterIndex ||
-                                (rBook.durChapterIndex == lBook.durChapterIndex && rBook.durChapterPos > lBook.durChapterPos)
-                        if (remoteIsNewer) {
+                        // bookshelf.json 不得覆盖本地/bookProgress 中的阅读进度！
+                        // 仅当本地从无阅读记录且没有独立进度文件时，才使用 rBook 的进度初始化
+                        val progressFileName = getProgressFileName(lBook.name, lBook.author)
+                        val hasDedicatedProgress = progressMap.containsKey(progressFileName)
+                        if (!hasDedicatedProgress && lBook.durChapterIndex == 0 && lBook.durChapterPos == 0 && rBook.durChapterIndex > 0) {
                             lBook.durChapterIndex = rBook.durChapterIndex
                             lBook.durChapterPos = rBook.durChapterPos
                             lBook.durChapterTitle = rBook.durChapterTitle
                             lBook.durChapterTime = rBook.durChapterTime
-                            lBook.syncTime = maxOf(lBook.syncTime, rBook.syncTime)
                             localChanged = true
-                        } else if (lBook.durChapterIndex > rBook.durChapterIndex ||
-                            (lBook.durChapterIndex == rBook.durChapterIndex && lBook.durChapterPos > rBook.durChapterPos)
-                        ) {
-                            remoteNeedsUpload = true
                         }
-                        if (rBook.syncTime > lBook.syncTime) {
+                        if (rBook.group != lBook.group || rBook.customTag != lBook.customTag || rBook.order != lBook.order || rBook.remark != lBook.remark) {
                             lBook.group = rBook.group
                             lBook.customTag = rBook.customTag
                             lBook.order = rBook.order
@@ -562,19 +580,28 @@ object AppWebDav {
                         if (rBook.isLocal) {
                             rBook.coverUrl = LocalBook.getCoverPath(rBook)
                         }
+                        val progressFileName = getProgressFileName(rBook.name, rBook.author)
+                        if (progressMap.containsKey(progressFileName)) {
+                            getBookProgress(rBook.name, rBook.author)?.let { bp ->
+                                rBook.durChapterIndex = bp.durChapterIndex
+                                rBook.durChapterPos = bp.durChapterPos
+                                rBook.durChapterTitle = bp.durChapterTitle
+                                rBook.durChapterTime = bp.durChapterTime
+                            }
+                        }
                         mergedBooks[rBook.bookUrl] = rBook
                         localChanged = true
                     }
                 }
 
-                localBooks.forEach { lBook ->
+                refreshedLocalBooks.forEach { lBook ->
                     if (!mergedBooks.containsKey(lBook.bookUrl)) {
                         mergedBooks[lBook.bookUrl] = lBook
                         remoteNeedsUpload = true
                     }
                 }
 
-                // 5. 应用到本地数据库
+                // 6. 应用到本地数据库
                 if (localChanged) {
                     val currentDbBooks = appDb.bookDao.all.associateBy { it.bookUrl }
                     val toInsert = mutableListOf<Book>()
@@ -591,9 +618,6 @@ object AppWebDav {
                         if (toInsert.isNotEmpty()) appDb.bookDao.insert(*toInsert.toTypedArray())
                     }
                 }
-
-                // 6. 应用 WebDAV 单独进度文件
-                applyRemoteProgressFiles(progressMap)
 
                 // 7. 分组同步
                 if (remoteBookGroupFile != null) {
@@ -624,22 +648,25 @@ object AppWebDav {
     }
 
     private suspend fun applyRemoteProgressFiles(progressMap: Map<String, WebDavFile>) {
-        appDb.bookDao.all.forEach { book ->
+        val books = appDb.bookDao.all
+        books.forEach { book ->
             val progressFileName = getProgressFileName(book.name, book.author)
             val webDavFile = progressMap[progressFileName] ?: return@forEach
-            if (webDavFile.lastModify <= book.syncTime) {
+            if (book.durChapterTime > 0L && webDavFile.lastModify <= book.durChapterTime && webDavFile.lastModify <= book.syncTime) {
                 return@forEach
             }
-            getBookProgress(book)?.let { bookProgress ->
-                if (bookProgress.durChapterIndex > book.durChapterIndex
-                    || (bookProgress.durChapterIndex == book.durChapterIndex
-                            && bookProgress.durChapterPos > book.durChapterPos)
-                ) {
+            getBookProgress(book.name, book.author)?.let { bookProgress ->
+                val remoteIsNewer = bookProgress.durChapterIndex > book.durChapterIndex ||
+                        (bookProgress.durChapterIndex == book.durChapterIndex && bookProgress.durChapterPos > book.durChapterPos)
+                if (remoteIsNewer) {
                     book.durChapterIndex = bookProgress.durChapterIndex
                     book.durChapterPos = bookProgress.durChapterPos
                     book.durChapterTitle = bookProgress.durChapterTitle
-                    book.durChapterTime = bookProgress.durChapterTime
-                    book.syncTime = System.currentTimeMillis()
+                    book.durChapterTime = maxOf(book.durChapterTime, bookProgress.durChapterTime)
+                    book.syncTime = maxOf(System.currentTimeMillis(), webDavFile.lastModify)
+                    appDb.bookDao.update(book)
+                } else {
+                    book.syncTime = maxOf(book.syncTime, webDavFile.lastModify)
                     appDb.bookDao.update(book)
                 }
             }
@@ -669,9 +696,6 @@ object AppWebDav {
         val localLocalBooks = localBooks.filter { it.isLocal }
         if (localLocalBooks.isNotEmpty()) {
             upLocalBooks(localLocalBooks)
-        }
-        localBooks.forEach { book ->
-            uploadBookProgress(book)
         }
         LocalConfig.lastBackup = System.currentTimeMillis()
     }
