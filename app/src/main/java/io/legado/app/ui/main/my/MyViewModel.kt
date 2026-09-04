@@ -24,7 +24,6 @@ data class MyUiState(
 sealed class PrefClickEvent {
     data class OpenUrl(val url: String) : PrefClickEvent()
     data class CopyUrl(val url: String) : PrefClickEvent()
-    data class ShowMd(val title: String, val path: String) : PrefClickEvent()
     data class StartActivity(val destination: Class<*>, val configTag: String? = null) : PrefClickEvent()
     object OpenReadRecord : PrefClickEvent()
     object OpenBookCacheManage : PrefClickEvent()

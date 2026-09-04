@@ -236,12 +236,6 @@
             android:configChanges="locale|layoutDirection|uiMode|screenLayout"
             android:enableOnBackInvokedCallback="true"
             android:launchMode="singleTask" />
-        <activity
-            android:name=".ui.about.CrashReportActivity"
-            android:configChanges="locale|layoutDirection|uiMode|screenLayout"
-            android:enableOnBackInvokedCallback="true"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTask" />
         <!-- txt目录规则管理 -->
         <activity
             android:name=".ui.book.toc.rule.TxtTocRuleActivity"

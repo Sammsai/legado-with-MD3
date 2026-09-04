@@ -19,7 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.automirrored.filled.Rule
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -58,7 +57,6 @@ import io.legado.app.ui.widget.components.settingItem.ClickableSettingItem
 import io.legado.app.ui.widget.components.settingItem.SwitchSettingItem
 import io.legado.app.ui.widget.components.topbar.GlassMediumFlexibleTopAppBar
 import io.legado.app.ui.widget.components.topbar.GlassTopAppBarDefaults
-import io.legado.app.ui.widget.components.topbar.TopBarActionButton
 import org.koin.androidx.compose.koinViewModel
 
 
@@ -97,20 +95,6 @@ fun MyScreen(
         topBar = {
             GlassMediumFlexibleTopAppBar(
                 title = stringResource(R.string.my),
-                actions = {
-                    TopBarActionButton(
-                        onClick = {
-                            onNavigate(
-                                PrefClickEvent.ShowMd(
-                                    title = "",
-                                    path = "appHelp"
-                                )
-                            )
-                        },
-                        imageVector = Icons.AutoMirrored.Filled.HelpOutline,
-                        contentDescription = stringResource(R.string.help)
-                    )
-                },
                 scrollBehavior = scrollBehavior
             )
         }

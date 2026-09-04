@@ -1,13 +1,11 @@
 package io.legado.app.help
 
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.os.Debug
 import android.os.Looper
-import android.os.Process
 import android.webkit.WebSettings
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -32,7 +30,6 @@ import java.io.StringWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.concurrent.TimeUnit
-import kotlin.system.exitProcess
 
 /**
  * 异常管理类
@@ -58,12 +55,8 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
             Looper.loop()
         } else {
             ReadAloud.stop(context)
-            if (handleException(ex)) {
-                Process.killProcess(Process.myPid())
-                exitProcess(10)
-            } else {
-                mDefaultHandler?.uncaughtException(thread, ex)
-            }
+            handleException(ex)
+            mDefaultHandler?.uncaughtException(thread, ex)
         }
     }
 
@@ -82,43 +75,23 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
     /**
      * 处理该异常
      */
-    private fun handleException(ex: Throwable?): Boolean {
-        if (ex == null) return false
+    private fun handleException(ex: Throwable?) {
+        if (ex == null) return
         LocalConfig.appCrash = true
         //保存日志文件
-        val crashFileName = saveCrashInfo2File(ex)
+        saveCrashInfo2File(ex)
         if ((ex is OutOfMemoryError || ex.cause is OutOfMemoryError) &&
             otherGateway.currentSettings.recordHeapDump
         ) {
             doHeapDump()
         }
-        return if (startCrashReport(crashFileName)) {
-            LocalConfig.appCrash = false
-            true
-        } else {
-            context.longToastOnUiLegacy(ex.stackTraceStr)
-            Thread.sleep(3000)
-            false
-        }
-    }
-
-    private fun startCrashReport(fileName: String): Boolean {
-        return runCatching {
-            val intent = Intent()
-                .setClassName(context.packageName, CRASH_REPORT_ACTIVITY)
-                .putExtra(EXTRA_CRASH_FILE_NAME, fileName)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-            context.startActivity(intent)
-        }.isSuccess
+        context.longToastOnUiLegacy(ex.stackTraceStr)
+        Thread.sleep(3000)
     }
 
     companion object {
-        const val EXTRA_CRASH_FILE_NAME = "crashFileName"
-
         private val otherGateway by lazy { GlobalContext.get().get<OtherSettingsGateway>() }
         private val backupGateway by lazy { GlobalContext.get().get<BackupSettingsGateway>() }
-
-        private const val CRASH_REPORT_ACTIVITY = "io.legado.app.ui.about.CrashReportActivity"
 
         /**
          * 存储异常和参数信息
@@ -200,18 +173,6 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
                 }
             }
             return fileName
-        }
-
-        fun readCrashLog(fileName: String?): String? {
-            return runCatching {
-                val crashDir = appCtx.externalCacheDir?.resolve("crash") ?: return null
-                val file = fileName
-                    ?.let { crashDir.resolve(it) }
-                    ?.takeIf { it.isFile }
-                    ?: crashDir.listFiles { file -> file.isFile }
-                        ?.maxByOrNull { it.name }
-                file?.readText()
-            }.getOrNull()
         }
 
         /**
