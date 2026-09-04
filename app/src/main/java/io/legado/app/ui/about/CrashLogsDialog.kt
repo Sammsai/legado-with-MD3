@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.MutableLiveData
@@ -27,6 +28,7 @@ import io.legado.app.utils.find
 import io.legado.app.utils.getFile
 import io.legado.app.utils.list
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.showTextSheet
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.isActive
@@ -65,12 +67,14 @@ class CrashLogsDialog : BaseBottomSheetDialogFragment(R.layout.dialog_recycler_v
     }
 
     private fun showLogFile(fileDoc: FileDoc) {
-        viewModel.readFile(fileDoc) {
+        viewModel.readFile(fileDoc) { content ->
             if (lifecycleScope.isActive) {
-                showDialogFragment(TextDialog(fileDoc.name, it))
+                (activity as? AppCompatActivity)?.let { act ->
+                    dismiss()
+                    act.showTextSheet(fileDoc.name, content)
+                } ?: showDialogFragment(TextDialog(fileDoc.name, content))
             }
         }
-
     }
 
     inner class LogAdapter : RecyclerAdapter<FileDoc, Item1lineTextBinding>(requireContext()) {

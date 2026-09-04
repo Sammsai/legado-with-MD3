@@ -21,6 +21,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 import androidx.fragment.app.DialogFragment
 import io.legado.app.R
+import io.legado.app.base.BaseComposeActivity
 import io.legado.app.ui.widget.dialog.TextDialog
 
 inline fun <reified T : DialogFragment> AppCompatActivity.showDialogFragment(
@@ -210,10 +211,26 @@ val Activity.navigationBarGravity: Int
         return gravity ?: Gravity.BOTTOM
     }
 
+fun AppCompatActivity.showTextSheet(
+    title: String,
+    content: String,
+    onDismiss: (() -> Unit)? = null,
+) {
+    if (this is BaseComposeActivity) {
+        showTextSheet(title, content, onDismiss)
+    } else {
+        val dialog = TextDialog(title, content, TextDialog.Mode.MD)
+        if (onDismiss != null) {
+            dialog.setOnDismissListener { onDismiss() }
+        }
+        showDialogFragment(dialog)
+    }
+}
+
 /**
  * 显示目录help下的帮助文档
  */
 fun AppCompatActivity.showHelp(fileName: String) {
     val mdText = String(assets.open("web/help/md/${fileName}.md").readBytes())
-    showDialogFragment(TextDialog(getString(R.string.help), mdText, TextDialog.Mode.MD))
+    showTextSheet(getString(R.string.help), mdText)
 }

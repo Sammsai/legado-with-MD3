@@ -64,15 +64,17 @@ import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.association.OnLineImportActivity
-import io.legado.app.ui.file.HandleFileContract
+import androidx.activity.result.contract.ActivityResultContracts
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyDayNight
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.invisible
+import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isNightMode
 import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.openUrl
+import io.legado.app.utils.takePersistablePermissionSafely
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.sysConfiguration
@@ -136,12 +138,17 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             else -> sysConfiguration.isNightMode
         }
     private var appliedDarkTheme: Boolean? = null
-    private val selectImageDir = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
-            ACache.get().put(imagePathKey, uri.toString())
-            saveImage(it.value, uri)
+    private var pendingSavePic: String? = null
+    private val selectImageDir =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            uri?.let {
+                if (it.isContentScheme()) {
+                    it.takePersistablePermissionSafely(requireContext())
+                }
+                ACache.get().put(imagePathKey, it.toString())
+                saveImage(pendingSavePic, it)
+            }
         }
-    }
 
     private lateinit var currentWebView: WebView
     private var source: BaseSource? = null
@@ -582,15 +589,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     }
 
     private fun selectSaveFolder(webPic: String?) {
-        val default = arrayListOf<SelectItem<Int>>()
-        val path = ACache.get().getAsString(imagePathKey)
-        if (!path.isNullOrEmpty()) {
-            default.add(SelectItem(path, -1))
-        }
-        selectImageDir.launch {
-            otherActions = default
-            value = webPic
-        }
+        pendingSavePic = webPic
+        selectImageDir.launch(null)
     }
 
     private fun saveImage(webPic: String?, uri: Uri) {

@@ -9,8 +9,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.drawable.toDrawable
@@ -34,6 +37,9 @@ import io.legado.app.ui.book.read.rememberEyeProtectionActive
 import io.legado.app.ui.theme.AppTheme
 import io.legado.app.ui.theme.LegadoTheme
 import io.legado.app.ui.theme.ThemeResolver
+import io.legado.app.ui.widget.components.modalBottomSheet.LocalTextSheetHost
+import io.legado.app.ui.widget.components.modalBottomSheet.TextSheetData
+import io.legado.app.ui.widget.components.modalBottomSheet.TextSheetHost
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.disableAutoFill
 import io.legado.app.utils.isNightMode
@@ -57,6 +63,19 @@ abstract class BaseComposeActivity(
     private val themeSettingsGateway by inject<ThemeSettingsGateway>()
     private var lastUiConfiguration: AppUiConfiguration? = null
 
+    var textSheetData by mutableStateOf<TextSheetData?>(null)
+        private set
+
+    fun showTextSheet(title: String, content: String, onDismiss: (() -> Unit)? = null) {
+        textSheetData = TextSheetData(title, content, onDismiss)
+    }
+
+    fun dismissTextSheet() {
+        val callback = textSheetData?.onDismiss
+        textSheetData = null
+        callback?.invoke()
+    }
+
     @Composable
     protected abstract fun Content()
 
@@ -76,29 +95,37 @@ abstract class BaseComposeActivity(
         val initialUiConfiguration = appUiConfigurationGateway.currentConfiguration
         val initialThemeSettings = themeSettingsGateway.currentSettings
         setContent {
-            val uiConfiguration by appUiConfigurationGateway.configuration
-                .collectAsStateWithLifecycle(initialUiConfiguration)
-            AppTheme(configuration = uiConfiguration) {
-                SyncWindowBackground()
-                val themeSettings by themeSettingsGateway.settings
-                    .collectAsStateWithLifecycle(initialThemeSettings)
-                val eyeProtectionActive = rememberEyeProtectionActive(
-                    enabled = themeSettings.eyeProtectionEnabled,
-                    autoNight = themeSettings.eyeProtectionAutoNight,
-                    isDark = uiConfiguration.isDarkTheme,
-                    schedule = themeSettings.eyeProtectionSchedule,
-                    startTime = themeSettings.eyeProtectionStartTime,
-                    endTime = themeSettings.eyeProtectionEndTime,
-                )
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .eyeProtectionColorFilter(
-                            enabled = eyeProtectionActive,
-                            intensity = themeSettings.colorTemperature,
+            CompositionLocalProvider(
+                LocalTextSheetHost provides { title, content -> showTextSheet(title, content) }
+            ) {
+                val uiConfiguration by appUiConfigurationGateway.configuration
+                    .collectAsStateWithLifecycle(initialUiConfiguration)
+                AppTheme(configuration = uiConfiguration) {
+                    SyncWindowBackground()
+                    val themeSettings by themeSettingsGateway.settings
+                        .collectAsStateWithLifecycle(initialThemeSettings)
+                    val eyeProtectionActive = rememberEyeProtectionActive(
+                        enabled = themeSettings.eyeProtectionEnabled,
+                        autoNight = themeSettings.eyeProtectionAutoNight,
+                        isDark = uiConfiguration.isDarkTheme,
+                        schedule = themeSettings.eyeProtectionSchedule,
+                        startTime = themeSettings.eyeProtectionStartTime,
+                        endTime = themeSettings.eyeProtectionEndTime,
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .eyeProtectionColorFilter(
+                                enabled = eyeProtectionActive,
+                                intensity = themeSettings.colorTemperature,
+                            )
+                    ) {
+                        Content()
+                        TextSheetHost(
+                            data = textSheetData,
+                            onDismissRequest = { dismissTextSheet() },
                         )
-                ) {
-                    Content()
+                    }
                 }
             }
         }

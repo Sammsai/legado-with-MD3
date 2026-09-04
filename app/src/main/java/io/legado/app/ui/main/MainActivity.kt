@@ -58,7 +58,6 @@ import io.legado.app.ui.book.read.ReadBookRouteHost
 import io.legado.app.ui.book.read.page.entities.PageDirection
 import io.legado.app.ui.theme.LocalAppUiConfiguration
 import io.legado.app.ui.welcome.WelcomeActivity
-import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
@@ -522,9 +521,9 @@ open class MainActivity : BaseComposeActivity(), AudioPlay.CallBack {
         LocalConfig.versionCode = appInfo.versionCode
         if (LocalConfig.isFirstOpenApp) {
             val help = String(assets.open("web/help/md/appHelp.md").readBytes())
-            val dialog = TextDialog(getString(R.string.help), help, TextDialog.Mode.MD)
-            dialog.setOnDismissListener { block.resume(null) }
-            showDialogFragment(dialog)
+            showTextSheet(getString(R.string.help), help) {
+                block.resume(null)
+            }
             return@suspendCoroutine
         }
         if (!BuildConfig.DEBUG) {
@@ -537,16 +536,16 @@ open class MainActivity : BaseComposeActivity(), AudioPlay.CallBack {
                         showDialogFragment(dialog)
                     } else {
                         val fallback = String(assets.open("updateLog.md").readBytes())
-                        val dialog = TextDialog(getString(R.string.update_log), fallback, TextDialog.Mode.MD)
-                        dialog.setOnDismissListener { block.resume(null) }
-                        showDialogFragment(dialog)
+                        showTextSheet(getString(R.string.update_log), fallback) {
+                            block.resume(null)
+                        }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
                     val fallback = String(assets.open("updateLog.md").readBytes())
-                    val dialog = TextDialog(getString(R.string.update_log), fallback, TextDialog.Mode.MD)
-                    dialog.setOnDismissListener { block.resume(null) }
-                    showDialogFragment(dialog)
+                    showTextSheet(getString(R.string.update_log), fallback) {
+                        block.resume(null)
+                    }
                 }
             }
         } else {

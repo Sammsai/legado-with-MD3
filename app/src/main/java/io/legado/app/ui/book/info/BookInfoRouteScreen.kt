@@ -28,11 +28,13 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.model.SourceCallBack
 import io.legado.app.ui.book.info.edit.BookInfoEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
-import io.legado.app.ui.file.HandleFileContract
+import androidx.activity.result.contract.ActivityResultContracts
 import io.legado.app.ui.login.SourceLoginJsExtensions
 import io.legado.app.utils.StartActivityContract
+import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.takePersistablePermissionSafely
 import io.legado.app.utils.toastOnUi
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.Dispatchers.IO
@@ -76,8 +78,13 @@ fun BookInfoRouteScreen(
     val tocActivityResult = rememberLauncherForActivityResult(TocActivityResult()) {
         viewModel.onTocResult(it)
     }
-    val localBookTreeSelect = rememberLauncherForActivityResult(HandleFileContract()) {
-        it.uri?.let { treeUri ->
+    val localBookTreeSelect = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        uri?.let { treeUri ->
+            if (treeUri.isContentScheme()) {
+                treeUri.takePersistablePermissionSafely(context)
+            }
             viewModel.onIntent(BookInfoIntent.SetDefaultBookTreeUri(treeUri.toString()))
         }
     }
@@ -159,9 +166,7 @@ fun BookInfoRouteScreen(
                     onOpenSourceLogin(effect.sourceUrl)
                 }
 
-                BookInfoEffect.OpenSelectBooksDir -> localBookTreeSelect.launch {
-                    title = activity.getString(R.string.select_book_folder)
-                }
+                BookInfoEffect.OpenSelectBooksDir -> localBookTreeSelect.launch(null)
 
                 is BookInfoEffect.OpenFile -> activity.openFileUri(effect.uri, effect.mimeType)
                 is BookInfoEffect.RunSourceCallback -> {

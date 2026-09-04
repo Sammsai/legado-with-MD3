@@ -2,76 +2,88 @@ package io.legado.app.ui.association
 
 import android.net.Uri
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.core.net.toUri
 import androidx.core.os.postDelayed
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
-import io.legado.app.base.VMBaseActivity
+import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppLog
-import io.legado.app.databinding.ActivityTranslucenceBinding
 import io.legado.app.domain.gateway.OtherSettingsGateway
 import io.legado.app.exception.InvalidBooksDirException
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
-import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.main.MainActivity
+import io.legado.app.ui.widget.components.alert.AppAlertDialog
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.canRead
 import io.legado.app.utils.checkWrite
 import io.legado.app.utils.getFile
-import io.legado.app.utils.gone
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.readUri
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
+import io.legado.app.utils.takePersistablePermissionSafely
 import io.legado.app.utils.toastOnUi
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
-import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
 
-class FileAssociationActivity :
-    VMBaseActivity<ActivityTranslucenceBinding, FileAssociationViewModel>() {
+class FileAssociationActivity : BaseComposeActivity(transparent = true) {
 
     private val otherSettingsGateway by inject<OtherSettingsGateway>()
+    private val viewModel by viewModels<FileAssociationViewModel>()
+    private val handler by lazy { buildMainHandler() }
 
-    private val localBookTreeSelect = registerForActivityResult(HandleFileContract()) {
-        intent.data?.let { uri ->
-            it.uri?.let { treeUri ->
-                lifecycleScope.launch {
-                    otherSettingsGateway.update {
-                        it.copy(defaultBookTreeUri = treeUri.toString())
+    private var pendingImportUri: Uri? = null
+    private var isLoading by mutableStateOf(true)
+    private var notSupportedData by mutableStateOf<Pair<Uri, String>?>(null)
+
+    private val localBookTreeSelect =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+            val uri = pendingImportUri ?: intent.data
+            if (uri != null) {
+                treeUri?.let {
+                    if (it.isContentScheme()) {
+                        it.takePersistablePermissionSafely(this)
                     }
+                    lifecycleScope.launch {
+                        otherSettingsGateway.update { settings ->
+                            settings.copy(defaultBookTreeUri = it.toString())
+                        }
+                    }
+                    importBook(it, uri)
+                } ?: run {
+                    val storageHelp = runCatching {
+                        assets.open("storageHelp.md").bufferedReader().use { r -> r.readText() }
+                    }.getOrDefault("")
+                    if (storageHelp.isNotEmpty()) {
+                        toastOnUi(storageHelp)
+                    }
+                    importBook(null, uri)
                 }
-                importBook(treeUri, uri)
-            } ?: let {
-                val storageHelp = String(assets.open("storageHelp.md").readBytes())
-                toastOnUi(storageHelp)
-                importBook(null, uri)
             }
         }
-    }
-
-    override val binding by viewBinding(ActivityTranslucenceBinding::inflate)
-
-    override val viewModel by viewModels<FileAssociationViewModel>()
-
-    private val handler by lazy {
-        buildMainHandler()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding.rotateLoading.visible()
         viewModel.importBookLiveData.observe(this) { uri ->
             importBook(uri)
         }
@@ -82,6 +94,7 @@ class FileAssociationActivity :
             finish()
         }
         viewModel.successLive.observe(this) {
+            isLoading = false
             when (it.first) {
                 "bookSource" -> {
                     startActivity(MainActivity.createBookSourceManageIntent(this, it.second))
@@ -96,33 +109,20 @@ class FileAssociationActivity :
             }
         }
         viewModel.errorLive.observe(this) {
-            binding.rotateLoading.gone()
+            isLoading = false
             toastOnUi(it)
             handler.postDelayed(2000) {
                 finish()
             }
         }
         viewModel.openBookLiveData.observe(this) {
-            binding.rotateLoading.gone()
+            isLoading = false
             startActivityForBook(it)
             finish()
         }
         viewModel.notSupportedLiveData.observe(this) { data ->
-            binding.rotateLoading.gone()
-            alert(
-                title = appCtx.getString(R.string.draw),
-                message = appCtx.getString(R.string.file_not_supported, data.second)
-            ) {
-                yesButton {
-                    importBook(data.first)
-                }
-                noButton {
-                    finish()
-                }
-                onCancelled {
-                    finish()
-                }
-            }
+            isLoading = false
+            notSupportedData = data
         }
         intent.data?.let { data ->
             if (data.isContentScheme() && data.canRead()) {
@@ -143,16 +143,48 @@ class FileAssociationActivity :
         } ?: finish()
     }
 
+    @Composable
+    override fun Content() {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator()
+            }
+        }
+
+        notSupportedData?.let { data ->
+            AppAlertDialog(
+                show = true,
+                title = stringResource(R.string.draw),
+                text = stringResource(R.string.file_not_supported, data.second),
+                onConfirm = {
+                    val uri = data.first
+                    notSupportedData = null
+                    isLoading = true
+                    importBook(uri)
+                },
+                onDismiss = {
+                    notSupportedData = null
+                    finish()
+                },
+                onDismissRequest = {
+                    notSupportedData = null
+                    finish()
+                }
+            )
+        }
+    }
+
     private fun importBook(uri: Uri) {
         if (uri.isContentScheme()) {
             val treeUriStr = otherSettingsGateway.currentSettings.defaultBookTreeUri
             if (treeUriStr.isNullOrEmpty()) {
-                localBookTreeSelect.launch {
-                    title = getString(R.string.select_book_folder)
-                    mode = HandleFileContract.DIR_SYS
-                }
+                pendingImportUri = uri
+                localBookTreeSelect.launch(null)
             } else {
-                importBook(Uri.parse(treeUriStr), uri)
+                importBook(treeUriStr.toUri(), uri)
             }
         } else {
             importBook(null, uri)
@@ -212,12 +244,13 @@ class FileAssociationActivity :
                 }
             }.onFailure {
                 when (it) {
-                    is InvalidBooksDirException -> localBookTreeSelect.launch {
-                        title = getString(R.string.select_book_folder)
-                        mode = HandleFileContract.DIR_SYS
+                    is InvalidBooksDirException -> {
+                        pendingImportUri = uri
+                        localBookTreeSelect.launch(null)
                     }
 
                     else -> {
+                        isLoading = false
                         val msg = "导入书籍失败\n${it.localizedMessage}"
                         AppLog.put(msg, it)
                         toastOnUi(msg)

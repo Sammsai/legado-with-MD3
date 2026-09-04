@@ -9,6 +9,7 @@ import android.graphics.drawable.Drawable
 import android.os.Bundle
 import androidx.annotation.ColorRes
 import androidx.annotation.DrawableRes
+import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
@@ -72,9 +73,20 @@ fun Fragment.startActivityForBook(
     startActivity(intent)
 }
 
+fun Fragment.showTextSheet(
+    title: String,
+    content: String,
+    onDismiss: (() -> Unit)? = null,
+) {
+    (activity as? AppCompatActivity)?.showTextSheet(title, content, onDismiss)
+        ?: showDialogFragment(TextDialog(title, content, TextDialog.Mode.MD).apply {
+            if (onDismiss != null) setOnDismissListener { onDismiss() }
+        })
+}
+
 fun Fragment.showHelp(fileName: String) {
     val mdText = String(requireContext().assets.open("web/help/md/${fileName}.md").readBytes())
-    showDialogFragment(TextDialog(getString(R.string.help), mdText, TextDialog.Mode.MD))
+    showTextSheet(getString(R.string.help), mdText)
 }
 
 val Fragment.isCreated
