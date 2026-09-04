@@ -6,6 +6,8 @@ import io.legado.app.data.dao.BookDao
 import io.legado.app.data.dao.GroupBookCount
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.AppWebDav
+import io.legado.app.help.config.LocalConfig
 import io.legado.app.ui.main.bookshelf.BookShelfItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -126,7 +128,13 @@ class BookRepository(
 
     suspend fun insert(book: Book) {
         withContext(Dispatchers.IO) {
+            if (!book.isNotShelf) {
+                LocalConfig.removeDeletedBook(book.bookUrl)
+            }
             bookDao.insert(book)
+            if (!book.isNotShelf) {
+                AppWebDav.triggerBookshelfSync()
+            }
         }
     }
 

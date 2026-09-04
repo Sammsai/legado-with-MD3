@@ -439,12 +439,16 @@ data class Book(
     fun save() {
         applyTagGroupRulesForBook(this)
         val isNew = !appDb.bookDao.has(bookUrl)
-        if (isNew) {
+        if (!isNotShelf) {
             LocalConfig.removeDeletedBook(bookUrl)
+        }
+        if (isNew) {
             appDb.bookDao.insert(this)
-            AppWebDav.triggerBookshelfSync()
         } else {
             appDb.bookDao.update(this)
+        }
+        if (!isNotShelf) {
+            AppWebDav.triggerBookshelfSync()
         }
     }
 
