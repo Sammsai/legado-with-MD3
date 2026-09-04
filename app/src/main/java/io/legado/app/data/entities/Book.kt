@@ -19,6 +19,7 @@ import io.legado.app.help.book.applyTagGroupRulesForBook
 import io.legado.app.help.book.getFolderNameNoCache
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
